@@ -11,7 +11,7 @@ nanoCH32H417
 
 
 # Introduce
-nanoCH32H417 is a development board made by MuseLab based on WCH CH32V305RBT6 with Dual TYPE-C USB interfaces, LCD interface and SD card interface onboard, can be programmed through the USB port, which is convenient for prototype verification and development.
+nanoCH32H417 is a development board made by MuseLab based on WCH CH32H417QEU6 with Dual TYPE-C USB interfaces, USB 3.0 5Gbps and 100Mbps ethernet, LCD interface and SD card interface onboard, programmed through the onboard debugger WCHLinkE, which is convenient for prototype verification and development.
 
 ![1](https://github.com/wuxx/nanoCH32H417/blob/main/doc/nanoCH32H417-1.jpg)
 ![4](https://github.com/wuxx/nanoCH32H417/blob/main/doc/nanoCH32H417-4.jpg)

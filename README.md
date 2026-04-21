@@ -42,7 +42,7 @@ Click Project -> Build Project to compile the project
 
 
 ## Program
-connect the WCHLinkE USB port, select the V5F project, then click Flash -> Download to program the flash.   
+connect the WCHLinkE USB port, select the V5F project(the Merge.Bin is generated in V5F project), then click Flash -> Download to program the flash.   
 ![MRS-4](https://github.com/wuxx/nanoCH32H417/blob/main/doc/MRS-4-EN.png)
 
 

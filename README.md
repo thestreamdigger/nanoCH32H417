@@ -14,7 +14,6 @@ nanoCH32H417
 nanoCH32H417 is a development board made by MuseLab based on WCH CH32V305RBT6 with Dual TYPE-C USB interfaces, LCD interface and SD card interface onboard, can be programmed through the USB port, which is convenient for prototype verification and development.
 
 ![1](https://github.com/wuxx/nanoCH32H417/blob/main/doc/nanoCH32H417-1.jpg)
-![2](https://github.com/wuxx/nanoCH32H417/blob/main/doc/nanoCH32H417-2.jpg)
 ![4](https://github.com/wuxx/nanoCH32H417/blob/main/doc/nanoCH32H417-4.jpg)
 
 # Feature
@@ -25,7 +24,7 @@ nanoCH32H417 is a development board made by MuseLab based on WCH CH32V305RBT6 wi
 - SD card slot, support SD card reading and writing (SPI protocol)
 
 # Chip Resources
-![CH32H417](https://github.com/wuxx/nanoCH32H417/blob/main/doc/CH32H417_resource.png)
+![CH32H417](https://github.com/wuxx/nanoCH32H417/blob/main/doc/CH32H417_resource.jpg)
 
 # How To Use
 ## MounRiver Studio IDE
@@ -37,18 +36,19 @@ download the MounRiver Studio IDE from the official website [MounRiver Studio](h
 ### Compile
 Take the GPIO project as an example, double-click GPIO_Toggle.wvproj to open the project
 ![MRS-1](https://github.com/wuxx/nanoCH32H417/blob/main/doc/MRS-1.png)
-![MRS-2](https://github.com/wuxx/nanoCH32H417/blob/main/doc/MRS-2.png)  
+![MRS-2](https://github.com/wuxx/nanoCH32H417/blob/main/doc/MRS-2-EN.png)  
 Click Project -> Build Project to compile the project  
-![MRS-3](https://github.com/wuxx/nanoCH32H417/blob/main/doc/MRS-3.png)
+![MRS-3](https://github.com/wuxx/nanoCH32H417/blob/main/doc/MRS-3-EN.png)
 
 
 ## Program
-If use WCH's official downloader WCHLink, click Flash -> Download to program the flash. If you use the USB1 port for program, the operation instructions are as follows  
-Note: The compiled binary file is located in the obj directory of the project, such as EVT\EXAM\GPIO\GPIO_Toggle\obj\GPIO_Toggle.hex
+connect the WCHLinkE USB port, select the V5F project, then click Flash -> Download to program the flash.   
+![MRS-4](https://github.com/wuxx/nanoCH32H417/blob/main/doc/MRS-4-EN.png)
+
 
 # Product Link
 [Aliexpress](https://www.aliexpress.com/item/1005005033298927.html?spm=a2g0s.12269583.0.0.20535947csm0Sw
-)
+)  
 [Tindie](https://www.tindie.com/products/johnnywu/nanoch32h417-development-board/)
 
 # Reference

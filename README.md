@@ -21,7 +21,7 @@ nanoCH32H417 is a development board made by MuseLab based on WCH CH32H417QEU6 wi
 - 5Gbps USB 3.0 super speed interface
 - USB 2.0 OTG interface, support PD
 - FPC-12P cable interface, can support common LCD (such as ili9341, st7789, etc.)
-- SD card slot, support SD card reading and writing (SPI protocol)
+- SD card slot, support SD card reading and writing (SDIO protocol)
 
 # Chip Resources
 ![CH32H417](https://github.com/wuxx/nanoCH32H417/blob/main/doc/CH32H417_Resource.jpg)

@@ -17,14 +17,14 @@ nanoCH32H417 is a development board made by MuseLab based on WCH CH32H417QEU6 wi
 ![4](https://github.com/wuxx/nanoCH32H417/blob/main/doc/nanoCH32H417-4.jpg)
 
 # Feature
-- Dual USB interface, USB1 is USB-FS device, USB2 is USB-HS device
-- Can be downloaded directly via USB without additional downloader
-- Onboard 8MHz and 32.768K crystal oscillator
+- Onboard WCHLink-E support SWD debug and serial port
+- 5Gbps USB 3.0 super speed interface
+- USB 2.0 OTG interface, support PD
 - FPC-12P cable interface, can support common LCD (such as ili9341, st7789, etc.)
 - SD card slot, support SD card reading and writing (SPI protocol)
 
 # Chip Resources
-![CH32H417](https://github.com/wuxx/nanoCH32H417/blob/main/doc/CH32H417_resource.jpg)
+![CH32H417](https://github.com/wuxx/nanoCH32H417/blob/main/doc/CH32H417_Resource.jpg)
 
 # How To Use
 ## MounRiver Studio IDE

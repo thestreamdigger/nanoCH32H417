@@ -113,6 +113,25 @@ When H417-specific docs don't cover something, the closest cousins are often goo
 
 ---
 
+## Multi-AI workflow (Gemini as second opinion)
+
+This environment has the **`gemini-cli` MCP server** registered globally — Gemini Pro/Flash is available as a tool from inside Claude Code. Use it for:
+
+- **Long docs**: hand the entire Chinese RM PDF to Gemini Pro (1M+ context) for a holistic explanation that wouldn't fit in Claude's context
+- **SPA / JS-gated pages**: Gemini has native Google Search and can resolve wch-ic.com landing pages that block direct curl
+- **Cross-check**: ask "review this I2S init code, does it look right?" to a different model
+
+Setup (one-time, already done):
+```bash
+npm install -g gemini-mcp-tool
+claude mcp add -s user gemini-cli "C:\Users\Admin\AppData\Roaming\npm\gemini-mcp.cmd"
+# restart Claude Code to load tools
+```
+
+Verify: `claude mcp list` should show `gemini-cli: ... - ✓ Connected`.
+
+See [`~/.claude/rules/mcp-stack.md`](../../../.claude/rules/mcp-stack.md) for detailed MCP usage notes (model selection, quota behavior, troubleshooting).
+
 ## How to use this list
 
 **Quick technical question** (HAL function, register meaning, build flag):

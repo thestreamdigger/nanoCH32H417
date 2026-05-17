@@ -19,6 +19,7 @@ Sourced from [ch32-riscv-ug/CH32H417](https://github.com/ch32-riscv-ug/CH32H417)
 | `CH32H417_RM_Ch23_SPI_I2S_EN.md` | I2S TX config + formulas |
 | `CHRV3UFI_Library_EN.md` | WCH USB Host + MSC + FAT32 API |
 | `_extracted/*.txt` | Full RM as grep-able plain text |
+| `community/QingKe_cores_summary.pdf` | 1-page comparison table of all QingKe cores V2A–V5F (community-made, [codeberg.org/20-100/Awesome_RISC-V](https://codeberg.org/20-100/Awesome_RISC-V/src/branch/master/WCH)) |
 
 Register names and bit fields inside the PDFs are already English — translations target narrative + tables.
 

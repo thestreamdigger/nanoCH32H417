@@ -208,17 +208,6 @@ SPI_I2S_DMACmd(SPI2, SPI_I2S_DMAReq_Tx, ENABLE);
 I2S_Cmd(SPI2, ENABLE);
 ```
 
-For external DACs needing MCLK (e.g. ES9018), set `I2S_MCLKOutput_Enable` and route the additional MCK pin (chip-specific, check pinmux table in datasheet).
+For DACs needing MCLK (e.g. ES9018), set `I2S_MCLKOutput_Enable`. PCM5102A has internal PLL — leave disabled.
 
-PCM5102A works **without MCK** thanks to its internal PLL — use `_Disable`.
-
----
-
-## Tradução pendente
-
-This translation covers I2S sections that matter for an audio playback project. **Not yet translated** from this chapter:
-- 23.2 SPI Functional Description (lines 64–229 of `_extracted/ch23_spi_i2s_cn.txt`)
-- 23.3.6+ I2S DMA modes detail
-- Full register bit-by-bit reset values
-
-Generate on demand from `_extracted/ch23_spi_i2s_cn.txt` using the workflow in [CH32H417_ReferenceManual_EN_TOC.md](CH32H417_ReferenceManual_EN_TOC.md#on-demand-translation-workflow).
+SPI mode (sections 23.2.x) not translated. Generate on demand from `_extracted/ch23_spi_i2s_cn.txt`.

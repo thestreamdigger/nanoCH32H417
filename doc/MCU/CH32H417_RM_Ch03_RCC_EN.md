@@ -130,15 +130,9 @@ The accurate way needs a 24.576 MHz or 22.5792 MHz reference crystal — which t
 
 For audiophile spec: add an external low-jitter audio clock (Crystek CCHD-957 or similar) feeding the I2S MCK directly, bypass the chip's clock generator for I2S.
 
-### 44.1k family (44.1/88.2/176.4)
+### 44.1k family (44.1 / 88.2 / 176.4)
 - Need PLL_CLK = N × 11.2896 MHz
-- With ×8.5 fractional PLLMUL and HSE=25 MHz: 25 × 8.5 / 4 = 53.125 MHz — close but not exact to 11.2896 multiples
-- Same conclusion: external clock needed for true accuracy
+- With ×8.5 fractional PLLMUL and HSE=25 MHz: closest fits are off by a few hundred ppm
+- Same conclusion: external clock needed for true audiophile accuracy
 
----
-
-## What's missing in this translation
-
-Full RCC chapter (1847 lines, ~50 pages) has detailed register descriptions for ~20 RCC registers. Not all translated here. For specific register layout, extract from `_extracted/ch03_rcc_cn.txt` line range and translate the section you need. Register names and bit names inside the original PDF are already English.
-
-Reset section translated above. Detailed clock register descriptions, peripheral enable bits (RCC_HB1ENR, RCC_HB2ENR, RCC_APBxENR), and clock control registers (`RCC_CR`, `RCC_CFGR`, `RCC_CFGR2`, `RCC_CFGR3`) — see original PDF chapter 3 sections 3.4 onwards.
+Detailed register layouts (`RCC_CR`, `RCC_CFGR`, `RCC_CFGR2`, `RCC_CFGR3`, peripheral enable bits) — original PDF or `_extracted/ch03_rcc_cn.txt`.

@@ -1,16 +1,6 @@
-# CH32H417 Reference Manual — English TOC + Summary
+# CH32H417 Reference Manual — English TOC
 
-Translated index of `CH32H417_ReferenceManual_CN.PDF` (V1.7, 879 pages, Chinese-only as published by WCH).
-
-Register names, bit-field names, and code listings inside the original PDF are already in English — only narrative text is Chinese. This file translates chapter titles + provides a one-line summary so you know where to look.
-
-For deep dives on specific chapters, use `pdftotext` to extract and translate on demand (workflow at bottom).
-
-## Foreword (page 1)
-
-CH32H417 is a connectivity-oriented general-purpose MCU based on QingKe RISC-V5F and RISC-V3F dual cores. Integrates USB 3.2 Gen1 controller + transceiver, 100M Ethernet MAC + PHY, SerDes high-speed isolation transceiver, Type-C/PD controller + PHY. Provides SD/eMMC controller, 500 MB/s UHSIF, DVP image interface, single-wire SWPMI, programmable PIOC, flexible FMC, DFSDM, LTDC, GPHA, DMA, multiple timers, 8 UARTs, I3C, 4× I2C, 2× QSPI, 4× SPI, 2× I2S, 3× CAN. Built-in dual 12-bit 5 Msps ADC, 10-bit 20 Msps HSADC, 16 TouchKey channels, dual DAC, 3× OPA, comparator. Supports 10/100M Ethernet, USB 2.0 + 3.0, USB Host + Device, Type-C/PDUSB fast charging, SerDes high-speed isolation, dual-core workload split.
-
-This manual covers CH32H417, H416, H415 chips. For device characteristics (electrical, packages, pinout) refer to `CH32H417DS0.PDF`.
+Index for `CH32H417_ReferenceManual_CN.PDF` V1.7 (879 pages, Chinese-only). Manual covers CH32H417, H416, H415. Device characteristics (electrical, packages) → `CH32H417_Datasheet_EN.PDF`.
 
 ### Core overview
 
@@ -93,29 +83,10 @@ Line numbers point into `_extracted/rm_full.txt` (50,036 lines).
 | 46 | Flash Memory and User Option Bytes (FLASH) | 闪存及用户选择字 | 49283 | program/erase, option bytes |
 | 47 | Universal High-Speed Interface (UHSIF) | 通用高速接口 | 50027 | 500 MB/s WCH proprietary link |
 
-## On-demand translation workflow
-
-For any chapter you need translated in full:
+## Extract a chapter on demand
 
 ```bash
-# Pick chapter and the next one (boundary line)
-START=22779    # e.g., chapter 23 SPI/I2S
-END=23986      # next chapter
-
-awk -v s=$START -v e=$END 'NR>=s && NR<e' \
-  doc/MCU/_extracted/rm_full.txt > /tmp/chapter.txt
-
-# Translate via DeepL CLI, gemini-cli, or paste into your tool of choice
-deepl --to EN /tmp/chapter.txt > chapter_en.md
+awk 'NR>=22779 && NR<23986' doc/MCU/_extracted/rm_full.txt > /tmp/chapter.txt
 ```
 
-Register tables and bit-field definitions inside the chapter are **already in English** inside the original PDF — no translation needed for those (only the narrative around them).
-
-## Pre-translated chapters
-
-For the immediate audio-project context, full translations of these chapters are available:
-
-- [Chapter 3 — RCC (clocks, PLL)](CH32H417_RM_Ch03_RCC_EN.md) — clock tree, PLL fractional, I2S clock generation
-- [Chapter 23 — SPI/I2S](CH32H417_RM_Ch23_SPI_I2S_EN.md) — I2S master TX config, 192 kHz / 24-bit support, DMA wiring
-
-Add more as needed — translation is per-chapter, ~1 hour per 50-page chapter.
+Register tables are already English in the PDF — only narrative needs translation.

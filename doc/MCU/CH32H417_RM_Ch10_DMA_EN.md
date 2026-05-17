@@ -141,15 +141,4 @@ The hardware request line for each peripheral is selected via `CHANNELx_MUX` bit
 | SPI3/I2S3 RX | per→mem | Channel 1 |
 | SPI3/I2S3 TX | mem→per | Channel 2 |
 
-> Verify exact channel via `CHANNELx_MUX` in the WCH example `EXAM/I2S/I2S_DMA/Common/hardware.c` — that's the authoritative reference.
-
----
-
-## What's left untranslated
-
-This is a focused summary. The full DMA chapter (~50 pages) also covers:
-- All 8 DMA1 channels + 8 DMA2 channels register tables
-- Hardware request line map for every peripheral
-- Detailed bit-by-bit register layouts (`DMA_INTFR`, `DMA_INTFCR`, `DMA_CFGR1..8`, `DMA_CNTR1..8`, `DMA_PADDR1..8`, `DMA_MADDR1..8`, `DMA_CHANNELMUX1`, `DMA_CHANNELMUX2`)
-
-For specifics, see original PDF chapter 10 or extract from `_extracted/rm_full.txt` lines 8454–9259.
+> Verify exact channel via `CHANNELx_MUX` in `EXAM/I2S/I2S_DMA/Common/hardware.c`.

@@ -120,17 +120,4 @@ g.GPIO_Pin = GPIO_Pin_1;
 GPIO_Init(GPIOC, &g);
 ```
 
-That's it. Now I2S2 is wired to the pins. Configure I2S itself per [Chapter 23](CH32H417_RM_Ch23_SPI_I2S_EN.md).
-
----
-
-## What's left untranslated
-
-This summary covers the core mechanics. The full chapter (~50 pages) also includes:
-- Bit-by-bit register layouts for every GPIO register
-- Output speed levels detail (low / medium / high / very high)
-- Schmitt trigger characteristics
-- I/O voltage regulator dynamic switch sequence (VIO18 ramp behavior)
-- Per-pin reset-state defaults
-
-For specifics, see original PDF or extract from `_extracted/rm_full.txt` lines 7208–8453. The full AF mapping table per pin lives in **CH32H417_Datasheet_EN.PDF**, not in the RM.
+Full per-pin AF mapping table is in `CH32H417_Datasheet_EN.PDF`, not in the RM.

@@ -10,7 +10,8 @@ nanoCH32H417
 > - [PINOUT.md](PINOUT.md) — silkscreen → MCU pin mapping (verified)
 > - [EXAMPLES.md](EXAMPLES.md) — index of all 47 peripherals in `doc/EVT/EXAM/`
 > - [BUILD.md](BUILD.md) — headless CLI build/flash (no MounRiver Studio)
-> - [doc/MCU/](doc/MCU/) — official CH32H417 datasheets (EN+CN) + Reference Manual (CN) + arch diagrams
+> - [PROJECT_FLAC_PLAYER.md](PROJECT_FLAC_PLAYER.md) — FLAC USB → I2S player design + recipe
+> - [doc/MCU/](doc/MCU/) — official datasheets + RM (CN) + **English translations of relevant chapters + CHRV3UFI library**
 
 * [Introduce](#Introduce)
 * [Feature](#feature)

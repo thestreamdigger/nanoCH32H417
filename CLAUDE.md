@@ -86,6 +86,9 @@ This is what every EXAM/ project links against. Reference for any peripheral dri
 - [openwch/ch32h417](https://github.com/openwch/ch32h417) — official WCH upstream
 - [ch32-rs/wlink](https://github.com/ch32-rs/wlink) — open Rust flash tool, supports H417
 
+### Community + ecosystem
+See [COMMUNITY.md](COMMUNITY.md) for the full curated list: WCH official, GitHub orgs (openwch, ch32-rs, ch32-riscv-ug, Community-PIO-CH32V), ch32fun (most active stack), Discord, forums, peer-chip repos for porting (CH32V307/V305 are closest), vendors (MuseLab/AnalogLamb/Tindie), and news outlets.
+
 ### Searching the Chinese RM
 The Reference Manual is Chinese-only for now, but register names and bit fields are in English inside the PDF. To grep:
 ```bash

@@ -10,6 +10,7 @@ nanoCH32H417
 > - [PINOUT.md](PINOUT.md) — silkscreen → MCU pin mapping (verified)
 > - [EXAMPLES.md](EXAMPLES.md) — index of all 47 peripherals in `doc/EVT/EXAM/`
 > - [BUILD.md](BUILD.md) — headless CLI build/flash (no MounRiver Studio)
+> - [doc/MCU/](doc/MCU/) — official CH32H417 datasheets (EN+CN) + Reference Manual (CN) + arch diagrams
 
 * [Introduce](#Introduce)
 * [Feature](#feature)

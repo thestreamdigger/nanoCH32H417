@@ -68,12 +68,29 @@ This is what every EXAM/ project links against. Reference for any peripheral dri
 
 ## References
 
-External docs **not in this repo** (download separately):
-- CH32H417 Datasheet — wch.cn (electrical specs, pin assignment)
-- CH32H417 Reference Manual — wch.cn (registers, clock tree, USB SS, SerDes)
-- [openwch/ch32h417](https://github.com/openwch/ch32h417) — official WCH repo with same EVT + datasheet
-- [ch32-riscv-ug/CH32H417](https://github.com/ch32-riscv-ug/CH32H417) — community: errata, GPIO maps
+### In this repo (chip-level)
+- [doc/MCU/CH32H417_Datasheet_EN.PDF](doc/MCU/CH32H417_Datasheet_EN.PDF) — electrical specs, pinout, AC/DC characteristics
+- [doc/MCU/CH32H417_Datasheet_CN.PDF](doc/MCU/CH32H417_Datasheet_CN.PDF) — Chinese version
+- [doc/MCU/CH32H417_ReferenceManual_CN.PDF](doc/MCU/CH32H417_ReferenceManual_CN.PDF) — register reference, clock tree, every peripheral (CN only — EN not published yet)
+- [doc/MCU/README.md](doc/MCU/README.md) — index + reading order
+
+### In this repo (board-level)
+- `doc/EVT/PUB/CH32H417 Evaluation Board Reference-EN.pdf` — WCH eval board manual (not nanoCH32H417)
+- `hardware/nanoCH32H417.pdf` — nanoCH32H417 v1.0 schematic
+- `doc/EVT/EXAM/SRC/` — StdPeriph library source (42 headers + 38 .c)
+
+### External (still on the web, not mirrored here)
+- **QingKeV5 Processor Manual** — not yet public (chip too new)
+- **QingKeV3 Processor Manual** — [wch-ic.com](https://www.wch-ic.com/downloads/QingKeV3_Processor_Manual_PDF.html), behind SPA, manual browser download
+- **Errata** — not yet published; watch [ch32-riscv-ug/CH32H417](https://github.com/ch32-riscv-ug/CH32H417)
+- [openwch/ch32h417](https://github.com/openwch/ch32h417) — official WCH upstream
 - [ch32-rs/wlink](https://github.com/ch32-rs/wlink) — open Rust flash tool, supports H417
+
+### Searching the Chinese RM
+The Reference Manual is Chinese-only for now, but register names and bit fields are in English inside the PDF. To grep:
+```bash
+pdftotext doc/MCU/CH32H417_ReferenceManual_CN.PDF - | grep -i 'i2s\|spi\|pll\|usb_ss'
+```
 
 ## Conventions
 

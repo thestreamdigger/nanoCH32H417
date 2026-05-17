@@ -1,0 +1,1847 @@
+                  第 3 章 复位和时钟控制（RCC）
+  控制器根据电源区域的划分以及应用中的外设功耗管理考虑，提供了不同的复位形式以及可配置
+的时钟树结构。此章节描述了系统中各个时钟的作用域。
+
+
+3.1 主要特性
+      多种复位形式
+      多路时钟源，总线时钟管理
+      内置外部晶体振荡监测和时钟安全系统
+      各外设时钟独立管理：复位、开启、关闭
+      支持内部时钟输出
+
+
+3.2 复位
+       控制器提供了 3 种复位形式：电源复位、系统复位和后备区域复位。
+
+3.2.1 电源复位
+       电源复位发生时，将复位除了后备区域外的所有寄存器（后备区域由 VBAT 供电）。
+       其产生条件包括：
+      上电/掉电复位（POR/PDR 复位）
+
+3.2.2 系统复位
+    系统复位发生时，将复位除了控制/状态寄存器 RCC_RSTSCKR 中的复位标志和后备区域外的所有
+寄存器。通过查看 RCC_RSTSCKR 寄存器中的复位状态标志位识别复位事件来源。
+    其产生条件包括：
+ RST 引脚上的低电平信号（外部复位）
+ 窗口看门狗计数终止（WWDG 复位）
+ 独立看门狗计数终止（IWDG 复位）
+ 软件复位（SW 复位）
+ USBPD 复位
+    窗口/独立看门狗复位：由窗口/独立看门狗外设定时器计数周期溢出触发产生，详细描述看其相
+应章节。
+    软件复位：通过可编程中断控制器 PFIC 中的中断配置寄存器 PFIC_CFGR 的 SYSRST 位置 1 复位系
+统或配置寄存器 PFIC_SCTLR 的 SYSRST 位置 1 复位系统，具体参考对应章节。
+    USBPD 复位：当 PD_RST_EN 为 1 时，CH32H417 支持 USB PD 信号帧 Hard Reset 产生的复位；如果
+IE_RX_RESET 也为 1，则还支持信号帧 Cable Reset 产生的复位。USB PD 没有复位标志，但产生的复
+位效果同软件复位。
+
+
+
+
+V1.7                              10
+CH32H417 系列应用手册                                      https://wch.cn
+
+
+                              图 3-1 系统复位结构
+                   V DDIO
+
+
+
+                       R PU
+
+            NRST                                  System
+                                                  Reset
+
+
+                               USBPD Reset
+                               Power Reset
+                            Software Reset
+                                WWDG Reset
+                                IWDG Reset
+
+
+
+
+3.2.3 后备区域复位
+  后备区域复位发生时，只会复位后备区域寄存器，包括 RCC_BDCTLR 寄存器（RTC 使能和 LSE 振荡
+器）。其产生条件包括：
+ 在 VDD33 和 VBAT 都掉电的前提下，由 VDD33 或 VBAT 上电引起
+ RCC_BDCTLR 寄存器的 BDRST 位置 1
+
+
+
+
+V1.7                                         11
+CH32H417 系列应用手册                                                                                                                                              https://wch.cn
+
+
+
+3.3 时钟
+3.3.1 系统时钟结构
+                              图 3-2 时钟树框图（仅适用于批号第五位为 0 的芯片）
+
+                      40kHz
+                                                  IWDGCLK        to IWDG/LPTIM1/LPTIM2
+                      LSI RC
+                                                     RTCSEL
+
+
+       OSC32_IN     32.768kHz
+                                                                RTCCLK     to RTC                          PLLSRC
+       OSC32_OUT     LSE OSC
+                                           /512
+
+
+                                                              SERDES                                                         PLL_SRC_DIV
+                   to LPTIM1/                                  PLL
+                      LPTIM2                                                                HSE                               /1,…/64
+                                                                                                                                                                          PLLMUL
+                                                            ETH PLL
+                                                                                                                                                                    *4,*6,*7,*8,
+                                                         500M       20M                     HSI                               SYS PLL                              *8.5,*9,…*59
+
+             XI       25MHz                                /5
+                                                                                                                                                                          PLLCLK
+                                          ETH_PLL_CLK         ETHCLK_20M
+             XO      HSE OSC                        ETHCLK_100M                                                                          USBHSPLL_IN_DIV
+                                                                         USBHSPLLSRC                                                        /1,…/32
+                                                  25MHz                                                                   USBHS_PLL_CLK
+                                                                                                   USBHS
+                                                  HSI RC                                            PLL
+                                                                                                                              UTMION                   to USBHS
+                                                           to IWDG/LPTIM1/                                 480M         /8
+                                                                 LPTIM2
+                          USBSS
+                                                                                                   SYSPLL_SEL
+                           PLL                                                                                                         to SDMMC/DFSDM/SAI/ECDC
+                                                                                    PLL_CLK
+                                                                                                                                  SW
+                              125M                          USBHS_PLL_CLK                                                                                                 RNGSRC
+                                      PIPEON
+                                                              ETH_PLL_CLK
+                                                         SERDES_PLL_CLK/2                                                                                                             to RNG
+                                                            USBSS_PLL_CLK
+                                                                                                                  HSI                        SYSCLK             PLL_CLK
+                                         to USBSS
+                                      USBSS_PLL_CLK                                                                                                                   I2S2SRC
+                                                                                                                  HSE
+                                                           UHSIFSRC                                                                                                                  to I2S2
+                                                                                                                    CSS
+                                                                                                                                       HSADCSRC
+                                       ETH_PLL_CLK                       UHSIFDIV                                                                               PLL_CLK
+                                      USBHS_PLL_CLK                                                          ETH_PLL_CLK
+                                                                         /1,...,                                                                                      I2S3SRC
+                                                                                        to UHSIF
+                                               PLL_CLK                     /64                             USBHS_PLL_CLK
+                                                                                                                    PLL_CLK                                                          to I2S3
+                                                                                                                                             to HSADC
+                                                                                                                                                                PLL_CLK
+
+                   MCO[3:0]                                                 HPRE                  to CORE1(RISC-V5F )
+                                     SYS_CLK                                                                                                          to CORE0( RISC-V3F )
+                                                                                                  FPRE
+
+                                     HSE                                                                                                             to HB Bus/memory/DMA
+                                     HSI        HB prescaler                                               HCLK
+                                                                                    /2,/4
+                                                /2,/4,…/512
+                                     PLLCLK/2                                                                                                         to Core System timer
+             MCO                                                                                                             /8
+                                     UTMI_CLK
+                                                                                                                                                                   ADCSRC
+                                     USBSS_PLL_CLK/2
+                                     ETH_PLL_CLK/8                                                                      USBHS_PLL_CLK               /5,/6…,/36
+
+                                     SERDES_PLL_CLK/16                                                                        PPRE2                    ADCPRE                      to ADC1/ADC2
+                                                                                                                          /1,/2,/4,
+                                                                                                                                                    /2,/4,/6,/8
+                                                                                                                           /8,/16
+                                                              GTXC
+            GTXC
+                                                              RGMIION
+                                                                                                                                                                    to TIM2,3,4,5,6,7,
+                                                                 GRXC                                                                                                  11,12/LPTIM1,2
+            GRXC
+                                                                                                                        peripheral clock enable
+                                                ETH1GSRC
+
+                               PLL_CLK                                                                                                                               to TIM1,8,9,10
+                      SERDES_PLL_CLK/8
+                         ETH_PLL_CLK/4                      ETHCLK_125M                                                 peripheral clock enable
+                          USBSS_PLL_CLK
+                                                                                                                                                                     to     peripherals
+                                                                              RGMII interface
+                                                                                                                        peripheral clock enable
+                                                    LTDCSRC                                                                                       USBFSDIV
+                                 ETH_PLL_CLK                                                                            USBFSSRC
+                                                                    LTDCDIV                                                               /1,/2,/3,/4,/5,
+                         SERDES_PLL_CLK/2                                                                  PLL_CLK                        /6,/8,/10,/1.5,
+                                                                  /1,...,/64                                                              /2.5,/3.5,/4.5,
+                                        PLL_CLK                                                                                                                     48MHz
+                                                                                                                                          /5.5,/6.5,/7.5,
+                               USBHS_PLL_CLK                                                      USBHS_PLL_CLK
+                                                                       to LTDC                                                                 /9.5
+
+
+
+
+V1.7                                                                               12
+CH32H417 系列应用手册                                                                                                                                              https://wch.cn
+
+
+                              图 3-3 时钟树框图（适用于批号第五位大于 0 的芯片）
+
+                      40kHz
+                                                  IWDGCLK        to IWDG/LPTIM1/LPTIM2
+                      LSI RC
+                                                     RTCSEL
+
+
+       OSC32_IN     32.768kHz
+                                                                RTCCLK     to RTC                          PLLSRC
+       OSC32_OUT     LSE OSC
+                                           /512                               USBSS_PLL_CLK
+                                                                              USBHS_PLL_CLK
+                                                              SERDES                                                         PLL_SRC_DIV
+                   to LPTIM1/                                  PLL           SERDES_PLL_CLK/2
+                      LPTIM2                                                                HSE                               /1,…/64
+                                                                                                                                                                          PLLMUL
+                                                            ETH PLL                ETH_PLL_CLK
+                                                                                                                                                                    *4,*6,*7,*8,
+                                                         500M       20M                     HSI                               SYS PLL                              *8.5,*9,…*59
+
+             XI       25MHz                                /5
+                                                                                                                                                                          PLLCLK
+                                          ETH_PLL_CLK         ETHCLK_20M
+             XO      HSE OSC                        ETHCLK_100M                                                                          USBHSPLL_IN_DIV
+                                                                         USBHSPLLSRC                                                        /1,…/32
+                                                  25MHz                                                                   USBHS_PLL_CLK
+                                                                                                   USBHS
+                                                  HSI RC                                            PLL
+                                                                                                                              UTMION                   to USBHS
+                                                           to IWDG/LPTIM1/                                 480M         /8
+                                                                 LPTIM2
+                          USBSS
+                                                                                                   SYSPLL_SEL
+                           PLL                                                                                                         to SDMMC/DFSDM/SAI/ECDC
+                                                                                    PLL_CLK
+                                                                                                                                  SW
+                              125M                          USBHS_PLL_CLK                                                                                                 RNGSRC
+                                      PIPEON
+                                                              ETH_PLL_CLK
+                                                         SERDES_PLL_CLK/2                                                                                                             to RNG
+                                                            USBSS_PLL_CLK
+                                                                                                                  HSI                        SYSCLK             PLL_CLK
+                                         to USBSS
+                                      USBSS_PLL_CLK                                                                                                                   I2S2SRC
+                                                                                                                  HSE
+                                                           UHSIFSRC                                                                                                                  to I2S2
+                                                                                                                    CSS
+                                                                                                                                       HSADCSRC
+                                       ETH_PLL_CLK                       UHSIFDIV                                                                               PLL_CLK
+                                      USBHS_PLL_CLK                                                          ETH_PLL_CLK
+                                                                         /1,...,                                                                                      I2S3SRC
+                                                                                        to UHSIF
+                                               PLL_CLK                     /64                             USBHS_PLL_CLK
+                                                                                                                    PLL_CLK                                                          to I2S3
+                                                                                                                                             to HSADC
+                                                                                                                                                                PLL_CLK
+
+                   MCO[3:0]                                                 HPRE                  to CORE1(RISC-V5F )
+                                     SYS_CLK                                                                                                          to CORE0( RISC-V3F )
+                                                                                                  FPRE
+
+                                     HSE                                                                                                             to HB Bus/memory/DMA
+                                     HSI        HB prescaler                                               HCLK
+                                                                                    /2,/4
+                                                /2,/4,…/512
+                                     PLLCLK/2                                                                                                         to Core System timer
+             MCO                                                                                                             /8
+                                     UTMI_CLK
+                                                                                                                                                                   ADCSRC
+                                     USBSS_PLL_CLK/2
+                                     ETH_PLL_CLK/8                                                                      USBHS_PLL_CLK               /5,/6…,/36
+
+                                     SERDES_PLL_CLK/16                                                                        PPRE2                    ADCPRE                      to ADC1/ADC2
+                                                                                                                          /1,/2,/4,
+                                                                                                                                                    /2,/4,/6,/8
+                                                                                                                           /8,/16
+                                                              GTXC
+            GTXC
+                                                              RGMIION
+                                                                                                                                                                    to TIM2,3,4,5,6,7,
+                                                                 GRXC                                                                                                  11,12/LPTIM1,2
+            GRXC
+                                                                                                                        peripheral clock enable
+                                                ETH1GSRC
+
+                               PLL_CLK                                                                                                                               to TIM1,8,9,10
+                      SERDES_PLL_CLK/8
+                         ETH_PLL_CLK/4                      ETHCLK_125M                                                 peripheral clock enable
+                          USBSS_PLL_CLK
+                                                                                                                                                                     to     peripherals
+                                                                              RGMII interface
+                                                                                                                        peripheral clock enable
+                                                    LTDCSRC                                                                                       USBFSDIV
+                                 ETH_PLL_CLK                                                                            USBFSSRC
+                                                                    LTDCDIV                                                               /1,/2,/3,/4,/5,
+                         SERDES_PLL_CLK/2                                                                  PLL_CLK                        /6,/8,/10,/1.5,
+                                                                  /1,...,/64                                                              /2.5,/3.5,/4.5,
+                                        PLL_CLK                                                                                                                     48MHz
+                                                                                                                                          /5.5,/6.5,/7.5,
+                               USBHS_PLL_CLK                                                      USBHS_PLL_CLK
+                                                                       to LTDC                                                                 /9.5
+
+
+
+
+3.3.2 高速时钟（HSI/HSE）
+  HSI 是系统内部 25MHz 的 RC 振荡器产生的高速时钟信号。HSI RC 振荡器能够在不需要任何外部
+器件的条件下提供系统时钟。它的启动时间很短但时钟频率精度较差。HSI 通过设置 RCC_CTLR 寄存
+
+V1.7                                                                               13
+CH32H417 系列应用手册                                                          https://wch.cn
+
+
+器中的 HSION 位被启动和关闭，HSIRDY 位指示 HSI RC 振荡器是否稳定。系统默认 HSION 和 HSIRDY 置
+1（建议不要关闭）。如果设置了 RCC_INTR 寄存器的 HSIRDYIE 位，将产生相应中断。
+ 出厂校准：制造工艺的差异会导致每个芯片的 RC 振荡频率不同，所以在芯片出厂前，会为每颗
+  芯片进行 HSI 校准。系统复位后，工厂校准值被装载到 RCC_CTLR 寄存器的 HSICAL[7:0]中。
+ 用户调整：基于不同的电压或环境温度，应用程序可以通过 RCC_CTLR 寄存器里的 HSITRIM[4:0]
+  位来调整 HSI 频率。
+注：如果 HSE 晶体振荡器失效，HSI 时钟会被作为备用时钟源（时钟安全系统）。
+
+       HSE 是外部的高速时钟信号，包括外部晶体/陶瓷谐振器产生或者外部高速时钟送入。
+      外部晶体/陶瓷谐振器（HSE 晶体）：外接外部振荡器为系统提供更为精确的时钟源。进一步信息
+       可参考数据手册的电气特性部分。HSE 晶体可以通过设置 RCC_CTLR 寄存器中的 HSEON 位被启动
+       和关闭，HSERDY 位指示 HSE 晶体振荡是否稳定，硬件在 HSERDY 位置 1 后才将时钟送入系统。如
+       果设置了 RCC_INTR 寄存器的 HSERDYIE 位，将产生相应中断。
+                             图 3-4 高速外部晶体电路
+
+
+                                                           XI
+                                     CL1
+                             Load
+                             Capacitance
+
+
+
+                                                           XO
+                                     CL2
+
+
+
+
+注：负载电容需要尽可能地靠近振荡器引脚，并根据晶体厂家参数选择容值。
+
+      外部高速时钟源（HSE 旁路）：此模式从外部直接送入时钟源到 XI 引脚，XO 引脚悬空。最高支
+       持 25MHz 频率。应用程序需在 HSEON 位为 0 情况下，置位 HSEBYP 位，打开 HSE 旁路功能，然后
+       再置位 HSEON 位。
+                            图 3-5 高速时钟源电路
+
+                        External
+                                           fHSE_ext
+                      clock source                              OSC_IN
+
+
+
+
+                                             (Suspended)
+
+
+
+
+3.3.3 低速时钟（LSI/LSE）
+   LSI 是系统内部的 RC 振荡器产生的低速时钟信号。它可以在停止模式下保持运行，为 RTC 时钟、
+独立看门狗和唤醒单元提供时钟基准。进一步信息可参考数据手册的电气特性部分。LSI 可以通过设
+置 RCC_RSTSCKR 寄存器中的 LSION 位被启动和关闭，然后通过查询 LSIRDY 位检测 LSI RC 振荡是否稳
+定，硬件在 LSIRDY 位置 1 后才将时钟送入。如果设置了 RCC_INTR 寄存器的 LSIRDYIE 位，将产生相
+应中断。
+   LSE 是外部的低速时钟信号，包括外部晶体/陶瓷谐振器产生或者外部低速时钟送入。它为 RTC
+时钟或者其他定时功能提供一个低功耗且精确的时钟源。
+ 外部晶体/陶瓷谐振器（LSE 晶体）：外接 32.768kHz 的外部低速振荡器。LSE 通过设置 RCC_BDCTLR
+寄存器中的 LSEON 位被启动和关闭，LSERDY 位指示 LSE 晶体振荡是否稳定，硬件在 LSERDY 位置 1 后
+才将时钟送入系统。如果设置了 RCC_INTR 寄存器的 LSERDYIE 位，将产生相应中断。
+V1.7                                         14
+CH32H417 系列应用手册                                                          https://wch.cn
+
+
+                            图 3-6 低速外部晶体电路
+
+                                                          OSC32_IN
+                                  CL1
+
+                             Load             32.768kHZ
+                             Capacitance
+
+
+
+                                                          OSC32_OUT
+                                  CL2
+
+
+
+
+ 外部低速时钟源（LSE 旁路）：此模式从外部直接送入时钟源到 OSC32_IN 引脚，OSC32_OUT 引脚
+悬空。应用程序需在 LSEON 位为 0 情况下，置位 LSEBYP 位，打开 LSE 旁路功能，然后再置位 LSEON
+位。
+                       图 3-7 低速时钟源电路
+                        External
+                                           f LSE_ext
+                      clock source                           OSC32_IN
+
+
+
+
+                                           (Suspended)       OSC32_OUT
+
+
+
+
+3.3.4 PLL 时钟
+    通过配置 RCC_CFGR0 寄存器和 RCC_PLLCFGR 寄存器，内部 PLL 时钟可以选择 6 种时钟来源和倍频
+系数，这些设置必须在每个 PLL 被开启前完成，一旦 PLL 被启动，这些参数就不能被改动。
+    设置 RCC_CTLR 寄存器中的 PLLON 位被启动和关闭，PLLRDY 位指示 PLL 时钟是否稳定，硬件在
+PLLRDY 位置 1 后才将时钟送入系统。
+    设置 RCC_CTLR 寄存器中的 USBHS_PLLON 位被启动和关闭，USBHS_PLLRDY 位指示 USBHS_PLL 时钟
+是否稳定，硬件在 USBHS_PLLRDY 位置 1 后才将时钟送入系统。
+    设置 RCC_CTLR 寄存器中的 USBSS_PLLON 位被启动和关闭，USBSS_PLLRDY 位指示 USBSS_PLL 时钟
+是否稳定，硬件在 USBSS_PLLRDY 位置 1 后才将时钟送入系统。
+    设置 RCC_CTLR 寄存器中的 ETH_PLLON 位被启动和关闭，ETH_PLLRDY 位指示 ETH_PLL 时钟是否稳
+定，硬件在 ETH_PLLRDY 位置 1 后才将时钟送入系统。
+    设置 RCC_CTLR 寄存器中的 SERDES_PLLON 位被启动和关闭，  SERDES_PLLRDY 位指示 SERDES_PLL 时
+钟是否稳定，硬件在 SERDES_PLLRDY 位置 1 后才将时钟送入系统。
+    如果设置了 RCC_INTR 寄存器的 PLLRDYIE 位、ETHPLLRDYIE 位或 SERDESPLLRDYIE 位，将产生相
+应中断。
+    PLL 时钟来源：
+ HSI 时钟送入
+ HSE 时钟送入
+ USBHS_PLL（480MHz）时钟送入
+ ETH_PLL（500MHz）时钟送入
+ USBSS_PLL（125MHz）时钟送入
+ SERDES_PLL 时钟 2 分频送入
+
+3.3.5 总线/外设时钟
+3.3.5.1 系统时钟（SYSCLK）
+    通过配置 RCC_CFGR0 寄存器 SW[1:0]位配置系统时钟来源，SWS[1:0]指示当前的系统时钟源。
+ HSI 作为系统时钟
+
+V1.7                                        15
+CH32H417 系列应用手册                                        https://wch.cn
+
+
+ HSE 作为系统时钟
+ PLL 时钟作为系统时钟
+  控制器复位后，默认 HSI 时钟被选为系统时钟源。时钟源之间的切换必须在目标时钟源准备就绪
+后才会发生。
+
+3.3.5.2 HB 总线外设时钟（HCLK）
+    通过配置 RCC_CFGR0 寄存器的 HPRE[3:0]、PPRE2[2:0]位，可以配置 HB 总线的时钟。这些总线时
+钟决定了挂载在其下面的外设接口访问时钟基准。应用程序可以调整不同的数值，来降低部分外设工
+作时的功耗。
+    通过 RCC_HBRSTR、RCC_HB1PRSTR、RCC_HB2PRSTR 寄存器中各个位可以复位不同的外设模块，将
+其恢复到初始状态。
+    通过 RCC_HBPCENR、RCC_HB1PCENR、RCC_HB2PCENR 寄存器中各个位可以单独开启或关闭不同外设
+模块通讯时钟接口。使用某个外设时，首先需要开启其时钟使能位，才能访问其寄存器。
+
+3.3.5.3 RTC 时钟（RTCCLK）
+    通过设置 RCC_BDCTLR 寄存器的 RTCSEL[1:0]位，RTCCLK 时钟源可以由 HSE 分频、LSE 或 LSI 时
+钟提供。修改此位前要保证电源控制寄存器（PWR_CTLR）中的 DBP 位置 1，只有后备区域复位，才能
+复位此位。
+ LSE 作为 RTC 时钟：由于 LSE 处于后备域由 VBAT 供电，只要 VBAT 维持供电，尽管 VDD33 供电被切断，
+    RTC 仍继续工作。
+ LSI 作为 RTC 时钟：如果 VDD33 供电被切断，RTC 自动唤醒不能保证。
+ HSE 经 512 分频后作为 RTC 时钟：如果 VDD33 供电被切断或内部电压调压器被关闭（1.8V 域的供电
+    被切断），则 RTC 状态不确定。
+
+3.3.5.4 独立看门狗时钟
+    如果独立看门狗已经由硬件配置设置或软件启动，LSI 振荡器将被强制打开，并且不能被关闭。
+在 LSI 振荡器稳定后，时钟供应给 IWDG。
+
+3.3.5.5 时钟输出（MCO）
+    微控制器允许输出时钟信号到 MCO 引脚。在相应的 GPIO 端口寄存器配置复用推挽输出模式，通
+过配置 RCC_CFGR0 寄存器 MCO[3:0]位，可以选择以下 8 个时钟信号作为 MCO 时钟输出：
+ 系统时钟（SYSCLK）输出
+ HSI 时钟输出
+ HSE 时钟输出
+ PLL 时钟 2 分频后输出
+ UTMI 时钟输出
+ USBSS_PLL 时钟 2 分频后输出
+ ETH_PLL 时钟 8 分频后输出
+ SERDES_PLL 时钟 16 分频后输出
+
+3.3.5.6 USB 时钟
+    USBHS 时钟源来自 USBHSPLL 时钟，通过配置 RCC_PLLCFGR2 寄存器的 USBHSPLLSRC 位，选择
+USBHS_PLL 时钟源；  若选择输入时钟为分频后的 SYS_PLL_CLK，分频系数可通过 USBHSPLL_IN_DIV[4:0]
+位选择；通过配置 USBHSPLL_REFSEL[1:0]位对时钟频率进行选择，时钟频率必须和 USBHS_PLL 输入时
+钟保持一致；通过配置 RCC_CTLR 寄存器的 USBHS_PLLON 位，使能 USBHS_PLL 时钟。
+    USBFS/OTG_FS 48MHz 时钟源来自通过一个可配置的分频器的 PLL 时钟或者 USBFS_PLL 时钟，可
+
+V1.7                            16
+CH32H417 系列应用手册                                      https://wch.cn
+
+
+通过配置 RCC_CFGR2 寄存器的 USBFSSRC 位来选择。通过配置 RCC_HBPCENR 寄存器的 OTGFSEN 位，使
+能 USBOTG_FS 时钟。
+   USBSS 时钟源来自一个 USBSS_PLL 时钟，其输出 125MHz 时钟到 USBSS。通过配置 RCC_CTLR 寄存
+器的 USBSS_PLLON 位，使能 USBSS_PLL 时钟。
+
+3.3.5.7 ETH 时钟
+    ETH 时钟配置参考 31.4.3 章节。
+
+3.3.5.8 I2S 和 RNG 时钟
+    I2S 和 RNG 的时钟源来自 PLL_CLK 或系统时钟（SYSCLK），I2S2、I2S3 和 RNG 可分别通过配置寄
+存器 RCC_CFGR2 的 I2S2SRC 位、I2S3SRC 位和 RNGSRC 位选择时钟源。
+
+3.3.6 时钟安全系统
+   时钟安全系统是控制器的一种运行保护机制，它可以在 HSE 时钟发送故障的情况下，切换到 HSI
+时钟下，并产生中断通知，允许应用程序软件完成营救操作。
+   通过设置 RCC_CTLR 寄存器的 CSSON 位置 1，激活时钟安全系统。此时，时钟监测器将在 HSE 振荡
+器启动（HSERDY=1）延迟后被使能，并在 HSE 时钟关闭后关闭。一旦系统运行过程中 HSE 时钟发生故
+障，HSE 振荡器将被关闭，时钟失效事件将被送到高级定时器（TIM1 和 TIM8）的刹车输入端，并产生
+时钟安全中断，CSSF 位置 1，并且应用程序进入 NMI 不可屏蔽中断，通过置位 CSSC 位，可以清除 CSSF
+位标志，可撤销 NMI 中断挂起位。
+   如果当前 HSE 作为系统时钟，或者当前 HSE 作为 PLL 输入时钟，PLL 作为系统时钟，时钟安全系
+统将在 HSE 故障时自动将系统时钟切换到 HSI 振荡器，并关闭 HSE 振荡器和 PLL。
+   CSSON 在开启的情况下发生 HSE 失效事件，是不影响 HSE 和 PLL 使能的，软件亦可在 NMI 中断里
+进行处理。若是在激活时钟安全系统（CSSON=1）前，通过设置 RCC_CTLR 寄存器 CSS_HSE_DIS 位置 1，
+在 CSSON 开启的情况下发生 HSE 失效事件，硬件将关闭 HSE 及所有使用 HSE 的 PLL。
+
+3.3.7 RTC 校准
+  此功能必须配置 PC13 引脚作为普通 IO 口使用。
+ 脉冲输出
+  配置 RCC_BDCTLR 寄存器的 ASOE 位，开启 RTC 脉冲输出，设置 ASOS 位，选择秒脉冲输出还是闹
+钟脉冲输出。
+ RTC 校准
+  配置 RCC_BDCTLR 寄存器的 CCO 位后，内部的 RTC 时钟将经过 64 分频后输出到 PC13 引脚上。通
+过实际测试，软件配合修改 RTCCAL[6:0]位来调整时钟对 RTC 进行校准。
+
+3.3.8 BKP 接口复位
+  BKP 区域可以在 VDD33 主电源掉电下，由 VBAT 独立供电。应用代码控制 BKP 区域寄存器复位中，ASOS
+位、ASOE 位在软件配置 RCC_BDCTLR 寄存器的 BDRST 位下复位，不受 RCC 外设接口控制 BKPRST 位影
+响。
+
+
+3.4 寄存器描述
+                         表 3-1 RCC 相关寄存器列表
+         名称         访问地址                  描述                 复位值
+ R32_RCC_CTLR      0x40021000   时钟控制寄存器                    0x0000xx83
+ R32_RCC_CFGR0     0x40021004   时钟配置寄存器 0                  0x00000000
+
+V1.7                             17
+CH32H417 系列应用手册                                                               https://wch.cn
+
+
+ R32_RCC_PLLCFGR                 0x40021008    PLL 配置寄存器                              0x00000004
+ R32_RCC_INTR                    0x4002100C    时钟中断寄存器                                0x00000000
+ R32_RCC_HB2PRSTR                0x40021010    HB2 外设复位寄存器                            0x00000000
+ R32_RCC_HB1PRSTR                0x40021014    HB1 外设复位寄存器                            0x00000000
+ R32_RCC_HBPCENR                 0x40021018    HB 外设时钟使能寄存器                           0x00000000
+ R32_RCC_HB2PCENR                0x4002101C    HB2 外设时钟使能寄存器                          0x00000000
+ R32_RCC_HB1PCENR                0x40021020    HB1 外设时钟使能寄存器                          0x00000000
+ R32_RCC_BDCTLR                  0x40021024    后备域控制寄存器                               0x00000000
+ R32_RCC_RSTSCKR                 0x40021028    控制/状态寄存器                               0x08000000
+ R32_RCC_HBRSTR                  0x4002102C    HB 外设复位寄存器                             0x00000000
+ R32_RCC_CFGR2                   0x40021030    时钟配置寄存器 2                              0x00000000
+ R32_RCC_PLLCFGR2                0x40021034    PLL 配置寄存器 2                            0x00080020
+
+
+3.4.1 时钟控制寄存器（RCC_CTLR）
+       偏移地址：0x00
+ 31     30   29     28      27      26    25   24    23   22    21   20   19      18     17        16
+CSS_H       SERDE SERDE                         USBSS USBSS USBHS USBHS
+      Reser             ETH_P ETH_P PLLRD                                     HSE        HSE
+SE_DI       S_PLL S_PLL                   PLLON _PLLR _PLLO _PLLR _PLLO CSSON                HSEON
+       ved              LLRDY LLON    Y                                       BYP        RDY
+  S          RDY   ON                            DY     N    DY     N
+ 15     14   13     12      11      10    9     8    7    6     5    4    3       2       1        0
+                                                                                Reser HSI
+                  HSICAL[7:0]                             HSITRIM[4:0]                    HSION
+                                                                                 ved RDY
+
+
+       位           名称             访问                           描述                         复位值
+                                         时钟安全系统开启情况下发生 HSE 失效事件的配置：
+                                         1：CSSON 开启的情况下发生 HSE 失效事件，硬件关闭
+                                         HSE 及所有使用 HSE 的 PLL；
+       31    CSS_HSE_DIS           RW                                                          0
+                                         0：CSSON 开启的情况下发生 HSE 失效事件，不影响 HSE
+                                         和 PLL 的使能，软件可在 NMI 中断里进行处理。
+                                         注：该位仅在 CSSON 为 0 时才可写入。
+       30    Reserved              RO    保留。                                                   0
+                                         SERDES_PLL 锁定标志位：
+       29    SERDES_PLLRDY         RO    1：SERDES_PLL 时钟锁定；                                    0
+                                         0：SERDES_PLL 时钟未锁定。
+                                         SERDES_PLL 时钟使能控制位：
+                                         1：使能 SERDES_PLL 时钟；
+       28    SERDES_PLLON          RW                                                          0
+                                         0：关闭 SERDES_PLL 时钟。
+                                         进入深睡眠后硬件自动清零。
+                                         ETH_PLL 锁定标志位：
+       27    ETH_PLLRDY            RO    1：ETH_PLL 时钟锁定；                                       0
+                                         0：ETH_PLL 时钟未锁定。
+                                         ETH_PLL 使能控制位：
+       26    ETH_PLLON             RW    1：使能 ETH_PLL 时钟；                                      0
+                                         0：关闭 ETH_PLL 时钟。
+
+V1.7                                            18
+CH32H417 系列应用手册                                                https://wch.cn
+
+
+                                   进入深睡眠后硬件自动清零。
+                                   PLL 时钟就绪锁定标志位（由硬件置位）：
+        25     PLLRDY         RO   1：PLL 时钟锁定；                                  0
+                                   0：PLL 时钟未锁定。
+                                   PLL 时钟使能控制位：
+                                   1：使能 PLL 时钟；
+        24     PLLON          RW                                                0
+                                   0：关闭 PLL 时钟。
+                                   注：进入停止模式后，此位由硬件清 0。
+                                   USBSS_PLL 时钟就绪锁定标志位：
+        23     USBSS_PLLRDY   RO   1：USBSS_PLL 时钟锁定；                            0
+                                   0：USBSS_PLL 时钟未锁定。
+                                   USBSS_PLL 时钟使能控制位：
+                                   1：使能 USBSS_PLL 时钟；
+        22     USBSS_PLLON    RW                                                0
+                                   0：关闭 USBSS_PLL 时钟。
+                                   进入深睡眠后硬件自动清零；
+                                   USBHS_PLL 时钟就绪锁定标志位：
+        21     USBHS_PLLRDY   RO   1：USBHS_PLL 时钟锁定；                            0
+                                   0：USBHS_PLL 时钟未锁定。
+                                   USBHS_PLL 时钟使能控制位：
+                                   1：使能 USBHS_PLL 时钟；
+        20     USBHS_PLLON    RW                                                0
+                                   0：关闭 USBHS_PLL 时钟。
+                                   进入深睡眠后硬件自动清零；
+                                   时钟安全系统使能控制位：
+                                   1：使能时钟安全系统。当 HSE 准备好（HSERDY 置 1），
+                                   硬件开启对 HSE 的时钟监测功能，发现 HSE 异常触发
+        19     CSSON          RW                                                0
+                                   CSSF 标志及 NMI 中断；当 HSE 没有准备好，硬件关闭
+                                   对 HSE 的时钟监测功能。
+                                   0：关闭时钟安全系统。
+                                   外部高速晶体旁路控制位：
+                                   1：旁路外部高速晶体/陶瓷谐振器（使用外部时钟源）；
+        18     HSEBYP         RW                                                0
+                                   0：不旁路高速外部晶体/陶瓷谐振器。
+                                   注：此位需在 HSEON 为 0 下写入。
+                                   外部高速晶体振荡稳定就绪标志位（由硬件置位）：
+                                   1：外部高速晶体振荡稳定；
+        17     HSERDY         RO                                                0
+                                   0：外部高速晶体振荡没有稳定。
+                                   注：在 HSEON 位清 0 后，该位需要 6 个 HSE 周期清 0。
+                                   外部高速晶体振荡使能控制位：
+                                   1：使能 HSE 振荡器；
+        16     HSEON          RW                                                0
+                                   0：关闭 HSE 振荡器。
+                                   注：进入停止低功耗模式后，此位由硬件清 0。
+   [15:8]      HSICAL[7:0]    RO   内部高速时钟校准值，在系统启动时被自动初始化。                      x
+                                   内部高速时钟调整值：
+                                   用户可以输入一个调整值叠加到 HSICAL[7:0]数值上，
+       [7:3]   HSITRIM[4:0]   RW   根据电压和温度的变化调整内部 HSI RC 振荡器的频 10000b
+                                   率。
+                                   默认值为 16，可以把 HSI 调整到 25MHz±0.25%；每步
+V1.7                                     19
+CH32H417 系列应用手册                                                                         https://wch.cn
+
+
+                                        HSICAL 的变化调整约 50kHz。
+       2      Reserved            RO    保留。                                                              0
+                                        内部高速时钟（25MHz）稳定就绪标志位（由硬件置位）：
+                                        0：内部高速时钟（25MHz）没有稳定；
+       1      HSIRDY              RO                                                                     1
+                                        1：内部高速时钟（25MHz）稳定。
+                                        注：在 HSION 位清 0 后，该位需要 6 个 HSI 周期清 0。
+                                        内部高速时钟（25MHz）使能控制位：
+                                        1：使能 HSI 振荡器；
+                                        0：关闭 HSI 振荡器。
+       0      HSION               RW                                                                     1
+                                        注：当从停止模式返回或用作系统时钟的外部振荡器
+                                        HSE 发生故障时，该位由硬件置 1 来启动内部 2MHz 的
+                                        RC 振荡器。
+
+
+3.4.2 时钟配置寄存器 0（RCC_CFGR0）
+       偏移地址：0x04
+  31        30 29      28    27   26     25       24     23    22    21     20     19       18    17         16
+       ADC_
+                                                        UTMIO PIPEO RGMII
+ADCSRC DUTY Reserved              MCO[3:0]                                       Reserved        FPRE[1:0]
+                                                          N     N    ON
+       _SEL
+  15        14 13      12    11   10      9       8       7    6     5      4       3       2      1         0
+ADCPRE[1:0]         PPRE2[2:0]         Reserved               HPRE[3:0]            SWS[1:0]        SW[1:0]
+
+
+       位              名称          访问                                描述                             复位值
+                                        ADC 输入时钟源选择：
+       31     ADCSRC              RW    1：USBHS_PLL（480MHZ）；                                             0
+                                        0：HCLK。
+                                        ADC 时钟占空比选择：
+                                        1：ADC 时钟占空比为 75%；
+       30     ADC_DUTY_SEL        RW                                                                     0
+                                        0：ADC 时钟占空比为 50%。
+                                        注：该位仅在 ADC 输入时钟源选择 HCLK 时有效。
+   [29:28] Reserved               RO    保留。                                                              0
+                                        微控制器 MCO 引脚时钟输出控制：
+                                        00xx：没有时钟输出；
+                                        0100：系统时钟（SYSCLK）输出；
+                                        0101：内部 25MHz 的 RC 振荡器时钟（HSI）输出；
+                                        0110：外部振荡器时钟（HSE）输出；
+   [27:24] MCO[3:0]               RW    0111：PLL 时钟 2 分频后输出；                                             0
+                                        1000：UTMI 时钟输出；
+                                        1001：USBSS_PLL 时钟 2 分频后输出；
+                                        1010：ETH_PLL 时钟 8 分频后输出；
+                                        1011：SERDES_PLL 时钟 16 分频后输出；
+                                        其他：保留。
+                                        UTMI 时钟门控使能：
+       23     UTMION              RW                                                                     0
+                                        1：使能；
+
+V1.7                                               20
+CH32H417 系列应用手册                                             https://wch.cn
+
+
+                             0：关闭。
+                             PIPE 时钟门控使能：
+       22   PIPEON      RW   1：使能；                                           0
+                             0：关闭。
+                             1000M 以太网 RGMII 接口是否启用和时钟使能：
+       21   RGMIION     RW   1：启用 1000M 以太网 RGMII 接口并使能时钟；                   0
+                             0：不启用并关闭时钟。
+  [20:18] Reserved      RO   保留。                                             0
+                             HCLK 输入时钟源预分频控制：
+                             00：不分频；
+  [17:16] FPRE[1:0]     RW                                                   0
+                             01：2 分频；
+                             1x：4 分频。
+                             ADC 时钟来源选择 USBHS_PLL 预分频控制高 2 位（配合
+                             RCC_CFGR0 寄存器 bit[13:11] PPRE2[2:0]使用）：
+                             00000：5 分频；
+                             00001：6 分频；
+                             00010：7 分频；
+                             00011：8 分频；
+                             ……
+                             11110：35 分频；
+                             11111：36 分频。
+
+  [15:14] ADCPRE[1:0]   RW                                                   0
+                             注：当使用 TIM1/8/9/10 时，禁止 PPRE2[2:0]配置成
+                             101b/110b/111b。
+
+                             ADC 时钟来源选择 HCLK 预分频控制：
+                             00：2 分频；
+                             01：4 分频；
+                             10：6 分频；
+                             11：8 分频。
+
+                             注：ADC 时钟最高不要超过 80MHz。
+                             作用于 ADC 时，作为时钟来源选择 USBHS_PLL 预分频
+                             控制低 3 位（配合 RCC_CFGR0 寄存器 bit[15:14]
+                             ADCPRE[1:0]使用）。
+
+                             作用于 ADC 时，时钟来源选择 HCLK 预分频控制：
+                             0xx：不分频；
+  [13:11] PPRE2[2:0]    RW   100：2 分频；                                       0
+                             101：4 分频；
+                             110：8 分频；
+                             111：16 分频。
+
+                             注：当使用 TIM1/8/9/10 时，禁止 PPRE2[2:0]配置成
+                             101b/110b/111b。
+   [10:8]   Reserved    RO   保留。必须保持为 0。                                     0
+
+V1.7                                21
+CH32H417 系列应用手册                                                             https://wch.cn
+
+
+                                       HB 时钟来源预分频控制：
+                                       0xxx：SYSCLK 不分频；
+                                       1000：SYSCLK 2 分频；
+                                       1001：SYSCLK 4 分频；
+                                       1010：SYSCLK 8 分频；
+       [7:4]   HPRE[3:0]          RW                                                         0
+                                       1011：SYSCLK 16 分频；
+                                       1100：SYSCLK 64 分频；
+                                       1101：SYSCLK 128 分频；
+                                       1110：SYSCLK 256 分频；
+                                       1111：SYSCLK 512 分频。
+                                       系统时钟（SYSCLK）状态（硬件置位）：
+                                       00：系统时钟源是 HSI；
+       [3:2]   SWS[1:0]           RO   01：系统时钟源是 HSE；                                        0
+                                       10：系统时钟源是 PLL；
+                                       11：不可用。
+                                       选择系统时钟来源：
+                                       00：HSI 作为系统时钟；
+                                       01：HSE 作为系统时钟；
+                                       10：PLL 输出作为系统时钟；
+       [1:0]   SW[1:0]            RW                                                         0
+                                       11：不可用。
+                                       注：在使能了时钟安全系统下（CSSON=1），当从停止
+                                       模式返回或用作系统时钟的外部振荡器 HSE 发生故障
+                                       时，由硬件强制选择 HSI 作为系统时钟。
+
+
+3.4.3 PLL 配置寄存器（RCC_PLLCFGR）
+       偏移地址：0x08
+ 31      30    29    28      27   26    25   24    23   22    21   20   19      18    17         16
+SYSPL
+L_GAT SYSPLL_SEL[2:0]                                   Reserved
+  E
+ 15      14    13    12      11   10    9    8     7    6     5    4    3       2      1         0
+ Reserved                PLL_SRC_DIV[5:0]           PLLSRC[2:0]          PLLMUL[4:0]
+
+
+        位           名称            访问                         描述                        复位值
+        31     SYSPLL_GATE        RW   系统时钟切换至 PLL 前，该位需置位。                                  0
+                                       系统时钟切换至 PLL 选择，只有 SYSPLL_GATE 为 0 才
+                                       允许写：
+                                       0xx：PLL_CLK；
+               SYSPLL_SEL[2:0
+   [30:28]                        RW   100：USBHS_PLL（480MHz）；                                0
+               ]
+                                       101：ETH_PLL（500MHz）；
+                                       110：SERDES_PLL/2；
+                                       111：USBSS_PLL（125MHz）。
+   [27:14] Reserved               RO   保留。                                                   0
+      [13:8]   PLL_SRC_DIV[5:     RW   PLL 输入时钟源分频，只有在 PLLON 为 0 时才能写：                       0
+
+
+V1.7                                          22
+CH32H417 系列应用手册                                                  https://wch.cn
+
+
+               0]                 000000：1 分频；
+                                  000001：2 分频；
+                                  000010：3 分频；
+                                  …
+                                  111111：64 分频。
+                                  PLL 输入时钟来源，只有在 PLLON 为 0 时才能写：
+                                  000：HSI；
+                                  001：HSE；
+                                  100：USBHS_PLL（480MHz）；
+       [7:5]   PLLSRC[2:0]   RW   101：ETH_PLL（500MHz）；                            0
+                                  110：USBSS_PLL（125MHz）；
+                                  111：SERDES_PLL/2。
+                                  注 ： 主 PLL 的 输 入 参 考 时 钟 ， 由 上 述 时 钟 源 经
+                                  PLL_SRC_DIV 分频，PLLMUL 倍频得到。
+                                  PLL 时钟倍频系数，只有在 PLLON 为 0 时才能写：
+                                  00000：PLL 4 倍频输出；
+                                  00001：PLL 6 倍频输出；
+                                  00010：PLL 7 倍频输出；
+                                  00011：PLL 8 倍频输出；
+                                  00100：PLL 8.5 倍频输出；
+                                  00101：PLL 9 倍频输出；
+                                  00110：PLL 9.5 倍频输出；
+                                  00111：PLL 10 倍频输出；
+                                  01000：PLL 10.5 倍频输出；
+                                  01001：PLL 11 倍频输出；
+                                  01010：PLL 11.5 倍频输出；
+                                  01011：PLL 12 倍频输出；
+                                  01100：PLL 12.5 倍频输出；
+                                  01101：PLL 13 倍频输出；
+                                  01110：PLL 14 倍频输出；
+       [4:0]   PLLMUL[4:0]   RW                                             00100b
+                                  01111：PLL 15 倍频输出；
+                                  10000：PLL 16 倍频输出；
+                                  10001：PLL 17 倍频输出；
+                                  10010：PLL 18 倍频输出；
+                                  10011：PLL 19 倍频输出；
+                                  10100：PLL 20 倍频输出；
+                                  10101：PLL 22 倍频输出；
+                                  10110：PLL 24 倍频输出；
+                                  10111：PLL 26 倍频输出；
+                                  11000：PLL 28 倍频输出；
+                                  11001：PLL 30 倍频输出；
+                                  11010：PLL 32 倍频输出；
+                                  11011：PLL 34 倍频输出；
+                                  11100：PLL 36 倍频输出；
+                                  11101：PLL 38 倍频输出；
+                                  11110：PLL 40 倍频输出；
+
+V1.7                                     23
+CH32H417 系列应用手册                                                            https://wch.cn
+
+
+                                     11111：PLL 59 倍频输出。
+
+
+3.4.4 时钟中断寄存器（RCC_INTR）
+       偏移地址：0x0C
+ 31     30   29     28     27   26    25   24    23    22    21   20   19      18    17         16
+                                                      SERDE
+                                                            ETHPL PLL HSE HSI LSE LSI
+                    Reserved                     CSSC SPLLR
+                                                            LRDYC RDYC RDYC RDYC RDYC RDYC
+                                                       DYC
+ 15     14   13     12     11   10    9    8      7    6     5    4    3       2      1         0
+      SERDE ETHPL                                    SERDE
+Reser              PLL HSE HSI LSE LSI                     ETHPL PLL HSE HSI LSE LSI
+      SPLLR LRDYI                               CSSF SPLLR
+ ved              RDYIE RDYIE RDYIE RDYIE RDYIE            LRDYF RDYF RDYF RDYF RDYF RDYF
+      DYIE    E                                       DYF
+
+
+       位            名称          访问                          描述                        复位值
+   [31:24] Reserved             RO   保留。                                                    0
+                                     清除时钟安全系统中断标志位（CSSF）：
+       23    CSSC               WO   1：清除 CSSF 中断标志；                                        0
+                                     0：无动作。
+                                     清除 SERDES_PLL 就绪中断标志位：
+       22    SERDESPLLRDYC      WO   1：清除 SERDESRDYF 中断标志；                                  0
+                                     0：无动作。
+                                     清除 ETH_PLL 就绪中断标志位：
+       21    ETHPLLRDYC         WO   1：清除 ETHRDYF 中断标志；                                     0
+                                     0：无动作。
+                                     清除 PLL 就绪中断标志位：
+       20    PLLRDYC            WO   1：清除 PLLRDYF 中断标志；                                     0
+                                     0：无动作。
+                                     清除 HSE 振荡器就绪中断标志位：
+       19    HSERDYC            WO   1：清除 HSERDYF 中断标志；                                     0
+                                     0：无动作。
+                                     清除 HSI 振荡器就绪中断标志位：
+       18    HSIRDYC            WO   1：清除 HSIRDYF 中断标志；                                     0
+                                     0：无动作。
+                                     清除 LSE 振荡器就绪中断标志位：
+       17    LSERDYC            WO   1：清除 LSERDYF 中断标志；                                     0
+                                     0：无动作。
+                                     清除 LSI 振荡器就绪中断标志位：
+       16    LSIRDYC            WO   1：清除 LSIRDYF 中断标志；                                     0
+                                     0：无动作。
+       15    Reserved           RO   保留。                                                    0
+                                     SERDES_PLL 就绪中断使能位：
+       14    SERDESPLLRDYIE     RW   1：使能 SERDES_PLL 就绪中断；                                  0
+                                     0：关闭 SERDES_PLL 就绪中断。
+                                     ETH_PLL 就绪中断使能位：
+       13    ETHPLLRDYIE        RW                                                          0
+                                     1：使能 ETH_PLL 就绪中断；
+V1.7                                        24
+CH32H417 系列应用手册                                                https://wch.cn
+
+
+                                 0：关闭 ETH_PLL 就绪中断。
+                                 PLL 就绪中断使能位：
+       12   PLLRDYIE        RW   1：使能 PLL 就绪中断；                                 0
+                                 0：关闭 PLL 就绪中断。
+                                 HSE 就绪中断使能位：
+       11   HSERDYIE        RW   1：使能 HSE 就绪中断；                                 0
+                                 0：关闭 HSE 就绪中断。
+                                 HSI 就绪中断使能位：
+       10   HSIRDYIE        RW   1：使能 HSI 就绪中断；                                 0
+                                 0：关闭 HSI 就绪中断。
+                                 LSE 就绪中断使能位：
+       9    LSERDYIE        RW   1：使能 LSE 就绪中断；                                 0
+                                 0：关闭 LSE 就绪中断。
+                                 LSI 就绪中断使能位：
+       8    LSIRDYIE        RW   1：使能 LSI 就绪中断；                                 0
+                                 0：关闭 LSI 就绪中断。
+                                 时钟安全系统中断标志位：
+                                 1：HSE 时钟失效，产生了时钟安全中断 CSSI；
+       7    CSSF            RO                                                  0
+                                 0：无时钟安全系统中断。
+                                 硬件置位，软件写 CSSC 位 1 清除。
+                                 SERDES_PLL 时钟就绪锁定中断标志：
+                                 1：SERDES_PLL 时钟锁定产生中断；
+       6    SERDESPLLRDYF   RO                                                  0
+                                 0：无 SERDES_PLL 时钟锁定中断。
+                                 硬件置位，软件写 SERDESRDYC 位 1 清除。
+                                 ETH_PLL 时钟就绪锁定中断标志：
+                                 1：ETH_PLL 时钟锁定产生中断；
+       5    ETHPLLRDYF      RO                                                  0
+                                 0：无 ETH_PLL 时钟锁定中断。
+                                 硬件置位，软件写 ETHPLLRDYC 位 1 清除。
+                                 PLL 时钟就绪锁定中断标志：
+                                 1：PLL 时钟锁定产生中断；
+       4    PLLRDYF         RO                                                  0
+                                 0：无 PLL 时钟锁定中断。
+                                 硬件置位，软件写 PLLRDYC 位 1 清除。
+                                 HSE 时钟就绪中断标志：
+                                 1：HSE 时钟就绪产生中断；
+       3    HSERDYF         RO                                                  0
+                                 0：无 HSE 时钟就绪中断。
+                                 硬件置位，软件写 HSERDYC 位 1 清除。
+                                 HSI 时钟就绪中断标志：
+                                 1：HSI 时钟就绪产生中断；
+       2    HSIRDYF         RO                                                  0
+                                 0：无 HSI 时钟就绪中断。
+                                 硬件置位，软件写 HSIRDYC 位 1 清除。
+                                 LSE 时钟就绪中断标志：
+                                 1：LSE 时钟就绪产生中断；
+       1    LSERDYF         RO                                                  0
+                                 0：无 LSE 时钟就绪中断。
+                                 硬件置位，软件写 LSERDYC 位 1 清除。
+                                 LSI 时钟就绪中断标志：
+       0    LSIRDYF         RO                                                  0
+                                 1：LSI 时钟就绪产生中断；
+V1.7                                   25
+CH32H417 系列应用手册                                                              https://wch.cn
+
+
+                                      0：无 LSI 时钟就绪中断。
+                                      硬件置位，软件写 LSIRDYC 位 1 清除。
+
+
+3.4.5 HB2 外设复位寄存器（RCC_HB2PRSTR）
+       偏移地址：0x10
+31      30   29       28    27   26    25    24    23   22    21   20    19      18    17         16
+I3C LTDCR                  GPHA ECDCR DFSDM Reser OPCMR TIM12 TIM11 TIM10 TIM9 SDIO Reser SAI
+          Reserved
+RST  ST                     RST  ST    RST ved     ST    RST RST RST RST RST ved RST
+15      14   13       12    11   10    9     8     7    6     5     4    3       2      1         0
+I2C4 USART1 TIM8 SPI1 TIM1 ADC2 ADC1 Reser IOPF IOPE IOPD IOPC IOPB IOPA HSADC AFIO
+RST RST RST RST RST RST RST ved RST RST RST RST RST RST RST RST
+
+
+       位          名称             访问                          描述                         复位值
+                                      I3C 模块复位控制：
+       31    I3CRST              RW                                                           0
+                                      1：复位模块；                 0：无作用。
+                                      LTDC 模块复位控制：
+       30    LTDCRST             RW                                                           0
+                                      1：复位模块；                 0：无作用。
+  [29:28] Reserved               R0   保留。                                                     0
+                                      GPHA 模块复位控制：
+       27    GPHARST             RW                                                           0
+                                      1：复位模块；                 0：无作用。
+                                      ECDC 模块复位控制：
+       26    ECDCRST             RW                                                           0
+                                      1：复位模块；                 0：无作用。
+                                      DFSDM 模块复位控制：
+       25    DFSDMRST            RW                                                           0
+                                      1：复位模块；                 0：无作用。
+       24    Reserved            R0   保留。                                                     0
+                                      OPCM 模块复位控制：
+       23    OPCMRST             RW                                                           0
+                                      1：复位模块；                 0：无作用。
+                                      TIM12 模块复位控制：
+       22    TIM12RST            RW                                                           0
+                                      1：复位模块；                 0：无作用。
+                                      TIM11 模块复位控制：
+       21    TIM11RST            RW                                                           0
+                                      1：复位模块；                 0：无作用。
+                                      TIM10 模块复位控制：
+       20    TIM10RST            RW                                                           0
+                                      1：复位模块；                 0：无作用。
+                                      TIM9 模块复位控制：
+       19    TIM9RST             RW                                                           0
+                                      1：复位模块；                 0：无作用。
+                                      SDIO 模块复位控制：
+       18    SDIORST             RW                                                           0
+                                      1：复位模块；                 0：无作用。
+       17    Reserved            R0   保留。                                                     0
+                                      SAI 模块复位控制：
+       16    SAIRST              RW                                                           0
+                                      1：复位模块；                 0：无作用。
+                                      I2C4 模块复位控制：
+       15    I2C4RST             RW                                                           0
+                                      1：复位模块；                 0：无作用。
+                                      USART1 模块复位控制：
+       14    USART1RST           RW                                                           0
+                                      1：复位模块；                 0：无作用。
+
+V1.7                                          26
+CH32H417 系列应用手册                                                                   https://wch.cn
+
+
+                                          TIM8 模块复位控制：
+       13       TIM8RST             RW                                                             0
+                                          1：复位模块；                  0：无作用。
+                                          SPI1 模块复位控制：
+       12       SPI1RST             RW                                                             0
+                                          1：复位模块；                  0：无作用。
+                                          TIM1 模块复位控制：
+       11       TIM1RST             RW                                                             0
+                                          1：复位模块；                  0：无作用。
+                                          ADC2 模块复位控制：
+       10       ADC2RST             RW                                                             0
+                                          1：复位模块；                  0：无作用。
+                                          ADC1 模块复位控制：
+       9        ADC1RST             RW                                                             0
+                                          1：复位模块；                  0：无作用。
+       8        Reserved            R0    保留。                                                      0
+                                          IO 的 PF 端口模块复位控制：
+       7        IOPFRST             RW                                                             0
+                                          1：复位模块；          0：无作用。
+                                          IO 的 PE 端口模块复位控制：
+       6        IOPERST             RW                                                             0
+                                          1：复位模块；          0：无作用。
+                                          IO 的 PD 端口模块复位控制：
+       5        IOPDRST             RW                                                             0
+                                          1：复位模块；          0：无作用。
+                                          IO 的 PC 端口模块复位控制：
+       4        IOPCRST             RW                                                             0
+                                          1：复位模块；          0：无作用。
+                                          IO 的 PB 端口模块复位控制：
+       3        IOPBRST             RW                                                             0
+                                          1：复位模块；          0：无作用。
+                                          IO 的 PA 端口模块复位控制：
+       2        IOPARST             RW                                                             0
+                                          1：复位模块；          0：无作用。
+                                          HSADC 模块复位控制：
+       1        HSADCRST            RW                                                             0
+                                          1：复位模块；                  0：无作用。
+                                          IO 辅助功能模块复位控制：
+       0        AFIORST             RW                                                             0
+                                          1：复位模块；        0：无作用。
+
+
+3.4.6 HB1 外设复位寄存器（RCC_HB1PRSTR）
+       偏移地址：0x14
+ 31        30   29       28   27     26   25    24     23   22    21    20   19      18      17        16
+SWPMI I2C3 DAC       PWR      BKP   CAN2 CAN1 CAN3 Reser I2C2 I2C1 USART5 USART4 USART3 USART2 SPI4
+ RST RST RST         RST      RST   RST RST RST ved RST RST RST             RST    RST    RST RST
+ 15        14   13       12   11     10    9     8     7    6     5     4    3       2       1         0
+                QSPI            LPTI LPTI USAR USAR USAR
+SPI3 SPI2            QSPI1 WWDG                          TIM7 TIM6 TIM5 TIM4 TIM3 TIM2
+                 2               M2   M1 T8RS T7RS T6RS
+RST RST               RST RST                            RST RST RST RST RST RST
+                RST             RST RST    T    T    T
+
+
+       位             名称             访问                           描述                          复位值
+                                          SWPMI 模块复位控制：
+       31       SWPMIRST            RW                                                             0
+                                          1：复位模块；                  0：无作用。
+                                          I2C3 模块复位控制：
+       30       I2C3RST             RW                                                             0
+                                          1：复位模块；                  0：无作用。
+       29       DACRST              RW    DAC 模块复位控制：                                              0
+
+V1.7                                              27
+CH32H417 系列应用手册                                        https://wch.cn
+
+
+                             1：复位模块；          0：无作用。
+                             电源接口模块复位控制：
+       28   PWRRST      RW                                              0
+                             1：复位模块；          0：无作用。
+                             后备单元复位控制：
+       27   BKPRST      RW                                              0
+                             1：复位模块；          0：无作用。
+                             CAN2 模块复位控制：
+       26   CAN2RST     RW                                              0
+                             1：复位模块；          0：无作用。
+                             CAN1 模块复位控制：
+       25   CAN1RST     RW                                              0
+                             1：复位模块；          0：无作用。
+                             CAN3 模块复位控制：
+       24   CAN3RST     RW                                              0
+                             1：复位模块；          0：无作用。
+       23   Reserved    RO   保留。                                        0
+                             I2C2 模块复位控制：
+       22   I2C2RST     RW                                              0
+                             1：复位模块；          0：无作用。
+                             I2C1 模块复位控制：
+       21   I2C1RST     RW                                              0
+                             1：复位模块；          0：无作用。
+                             USART5 模块复位控制：
+       20   USART5RST   RW                                              0
+                             1：复位模块；          0：无作用。
+                             USART4 模块复位控制：
+       19   USART4RST   RW                                              0
+                             1：复位模块；          0：无作用。
+                             USART3 模块复位控制：
+       18   USART3RST   RW                                              0
+                             1：复位模块；          0：无作用。
+                             USART2 模块复位控制：
+       17   USART2RST   RW                                              0
+                             1：复位模块；          0：无作用。
+                             SPI4 模块复位控制：
+       16   SPI4RST     RW                                              0
+                             1：复位模块；          0：无作用。
+                             SPI3 模块复位控制：
+       15   SPI3RST     RW                                              0
+                             1：复位模块；          0：无作用。
+                             SPI2 模块复位控制：
+       14   SPI2RST     RW                                              0
+                             1：复位模块；          0：无作用。
+                             QSPI2 模块复位控制：
+       13   QSPI2RST    RW                                              0
+                             1：复位模块；          0：无作用。
+                             QSPI1 模块复位控制：
+       12   QSPI1RST    RW                                              0
+                             1：复位模块；          0：无作用。
+                             窗口看门狗复位控制：
+       11   WWDGRST     RW                                              0
+                             1：复位模块；          0：无作用。
+                             LPTIM2 模块复位控制：
+       10   LPTIM2RST   RW                                              0
+                             1：复位模块；          0：无作用。
+                             LPTIM1 模块复位控制：
+       9    LPTIM1RST   RW                                              0
+                             1：复位模块；          0：无作用。
+                             USART8 模块复位控制：
+       8    USART8RST   RW                                              0
+                             1：复位模块；          0：无作用。
+                             USART7 模块复位控制：
+       7    USART7RST   RW                                              0
+                             1：复位模块；          0：无作用。
+       6    USART6RST   RW   USART6 模块复位控制：                             0
+
+V1.7                               28
+CH32H417 系列应用手册                                                                    https://wch.cn
+
+
+                                           1：复位模块；                  0：无作用。
+                                           定时器 7 模块复位控制：
+       5     TIM7RST               RW                                                               0
+                                           1：复位模块；                  0：无作用。
+                                           定时器 6 模块复位控制：
+       4     TIM6RST               RW                                                               0
+                                           1：复位模块；                  0：无作用。
+                                           定时器 5 模块复位控制：
+       3     TIM5RST               RW                                                               0
+                                           1：复位模块；                  0：无作用。
+                                           定时器 4 模块复位控制：
+       2     TIM4RST               RW                                                               0
+                                           1：复位模块；                  0：无作用。
+                                           定时器 3 模块复位控制：
+       1     TIM3RST               RW                                                               0
+                                           1：复位模块；                  0：无作用。
+                                           定时器 2 模块复位控制：
+       0     TIM2RST               RW                                                               0
+                                           1：复位模块；                  0：无作用。
+
+
+3.4.7 HB 外设时钟使能寄存器（RCC_HBPCENR）
+       偏移地址：0x18
+ 31     30   29       28      27      26    25   24    23    22    21   20    19      18     17         16
+                                                            PIOC Reser SERDE USBPD UHSIF USBO Reser
+                           Reserved
+                                                             EN   ved SEN     EN    EN TGEN ved
+ 15     14   13       12      11      10    9    8     7     6     5    4     3        2     1          0
+Reser ETHMA       USBSS USBHS SDMMC             Reser CRC                                   DMA2 DMA1
+            DVPEN                   RNGEN FMCEN                         Reserved
+ ved CEN           EN    EN    EN                ved  EN                                     EN   EN
+
+
+       位             名称            访问                             描述                          复位值
+   [31:23] Reserved                RO      保留。                                                      0
+                                           PIOC 模块时钟使能位：
+       22    PIOCEN                RW                                                               0
+                                           1：模块时钟开启；     0：模块时钟关闭。
+       21    Reserved              RO      保留。                                                      0
+                                           SERDES 模块时钟使能位：
+       20    SERDESEN              RW                                                               0
+                                           1：模块时钟开启；     0：模块时钟关闭。
+                                           USBPD 模块时钟使能位：
+       19    USBPDEN               RW                                                               0
+                                           1：模块时钟开启；     0：模块时钟关闭。
+                                           HSPP 模块时钟使能位：
+       18    UHSIFEN               RW                                                               0
+                                           1：模块时钟开启；     0：模块时钟关闭。
+                                           USBOTG_FS 模块时钟使能位：
+       17    OTGFSEN               RW                                                               0
+                                           1：模块时钟开启；       0：模块时钟关闭。
+   [16:15] Reserved                RO      保留。                                                      0
+                                           以太网 MAC 时钟使能：
+       14    ETHMACEN              RW      1：以太网 MAC 时钟开启；                                          0
+                                           0：以太网 MAC 时钟关闭。
+                                           DVP 模块时钟使能位：
+       13    DVPEN                 RW                                                               0
+                                           1：模块时钟开启；    0：模块时钟关闭。
+                                           USBSS 模块时钟使能位：
+       12    USBSSEN               RW                                                               0
+                                           1：模块时钟开启；     0：模块时钟关闭。
+
+V1.7                                              29
+CH32H417 系列应用手册                                                               https://wch.cn
+
+
+                                        USBHS 模块时钟使能位：
+        11     USBHSEN             RW                                                          0
+                                        1：模块时钟开启；     0：模块时钟关闭。
+                                        SDMMC 模块时钟使能位：
+        10     SDMMCEN             RW                                                          0
+                                        1：模块时钟开启；     0：模块时钟关闭。
+                                        RNG 模块时钟使能位：
+        9      RNGEN               RW                                                          0
+                                        1：模块时钟开启；    0：模块时钟关闭。
+                                        FMC 模块时钟使能位：
+        8      FMCEN               RW                                                          0
+                                        1：模块时钟开启；    0：模块时钟关闭。
+        7      Reserved            RO   保留。                                                    0
+                                        CRC 模块时钟使能位：
+        6      CRCEN               RW                                                          0
+                                        1：模块时钟开启；    0：模块时钟关闭。
+       [5:2]   Reserved            RO   保留。                                                    0
+                                        DMA2 模块时钟使能位：
+        1      DMA2EN              RW                                                          0
+                                        1：模块时钟开启；     0：模块时钟关闭。
+                                        DMA1 模块时钟使能位：
+        0      DMA1EN              RW                                                          0
+                                        1：模块时钟开启；     0：模块时钟关闭。
+
+
+3.4.8 HB2 外设时钟使能寄存器（RCC_HB2PCENR）
+       偏移地址：0x1C
+31       30    29       28    27   26    25   24    23   22    21   20    19      18    17         16
+I3C     LTDC                 GPHA ECDC DFSDM Reser OPCM TIM12 TIM11 TIM10 TIM9 SDIO Reser SAI
+               Reserved
+EN       EN                   EN   EN   EN    ved   EN   EN    EN    EN    EN   EN   ved  EN
+15       14    13       12    11   10    9     8    7     6    5     4    3       2      1         0
+I2C4 USART1 TIM8 SPI1 TIM1 ADC2 ADC1 Reser IOPF IOPE IOPD IOPC IOPB IOPA HSADC AFIO
+ EN    EN    EN   EN   EN   EN   EN   ved   EN   EN   EN   EN   EN   EN   EN    EN
+
+
+        位              名称          访问                         描述                         复位值
+                                        I3C 模块时钟使能位：
+        31     I3CEN               RW                                                          0
+                                        1：模块时钟开启；    0：模块时钟关闭。
+                                        LTDC 模块时钟使能位：
+        30     LTDCEN              RW                                                          0
+                                        1：模块时钟开启；     0：模块时钟关闭。
+  [29:28] Reserved                 RO   保留。                                                    0
+                                        GPHA 模块时钟使能位：
+        27     GPHAEN              RW                                                          0
+                                        1：模块时钟开启；     0：模块时钟关闭。
+                                        ECDC 模块时钟使能位：
+        26     ECDCEN              RW                                                          0
+                                        1：模块时钟开启；     0：模块时钟关闭。
+                                        DFSDM 模块时钟使能位：
+        25     DFSDMEN             RW                                                          0
+                                        1：模块时钟开启；     0：模块时钟关闭。
+        24     Reserved            RO   保留。                                                    0
+                                        OPCM 模块时钟使能位：
+        23     OPCMEN              RW                                                          0
+                                        1：模块时钟开启；     0：模块时钟关闭。
+                                        TIM12 模块时钟使能位：
+        22     TIM12EN             RW                                                          0
+                                        1：模块时钟开启；     0：模块时钟关闭。
+        21     TIM11EN             RW   TIM11 模块时钟使能位：                                         0
+
+V1.7                                           30
+CH32H417 系列应用手册                                                        https://wch.cn
+
+
+                                     1：模块时钟开启；             0：模块时钟关闭。
+                                     TIM10 模块时钟使能位：
+       20    TIM10EN            RW                                                      0
+                                     1：模块时钟开启；     0：模块时钟关闭。
+                                     TIM9 模块时钟使能位：
+       19    TIM9EN             RW                                                      0
+                                     1：模块时钟开启；     0：模块时钟关闭。
+                                     SDIO 模块时钟使能位：
+       18    SDIOEN             RW                                                      0
+                                     1：模块时钟开启；     0：模块时钟关闭。
+       17    Reserved           RO   保留。                                                0
+                                     SAI 模块时钟使能位：
+       16    SAIEN              RW                                                      0
+                                     1：模块时钟开启；    0：模块时钟关闭。
+                                     I2C4 模块时钟使能位：
+       15    I2C4EN             RW                                                      0
+                                     1：模块时钟开启；     0：模块时钟关闭。
+                                     USART1 模块时钟使能位：
+       14    USART1EN           RW                                                      0
+                                     1：模块时钟开启；     0：模块时钟关闭。
+                                     TIM8 模块时钟使能位：
+       13    TIM8EN             RW                                                      0
+                                     1：模块时钟开启；     0：模块时钟关闭。
+                                     SPI1 模块时钟使能位：
+       12    SPI1EN             RW                                                      0
+                                     1：模块时钟开启；     0：模块时钟关闭。
+                                     TIM1 模块时钟使能位：
+       11    TIM1EN             RW                                                      0
+                                     1：模块时钟开启；     0：模块时钟关闭。
+                                     ADC2 模块时钟使能位：
+       10    ADC2EN             RW                                                      0
+                                     1：模块时钟开启；     0：模块时钟关闭。
+                                     ADC1 模块时钟使能位：
+       9     ADC1EN             RW                                                      0
+                                     1：模块时钟开启；     0：模块时钟关闭。
+       8     Reserved           RO   保留。                                                0
+                                     IO 的 PF 端口模块时钟使能位：
+       7     IOPFEN             RW                                                      0
+                                     1：模块时钟开启；      0：模块时钟关闭。
+                                     IO 的 PE 端口模块时钟使能位：
+       6     IOPEEN             RW                                                      0
+                                     1：模块时钟开启；      0：模块时钟关闭。
+                                     IO 的 PD 端口模块时钟使能位：
+       5     IOPDEN             RW                                                      0
+                                     1：模块时钟开启；      0：模块时钟关闭。
+                                     IO 的 PC 端口模块时钟使能位：
+       4     IOPCEN             RW                                                      0
+                                     1：模块时钟开启；      0：模块时钟关闭。
+                                     IO 的 PB 端口模块时钟使能位：
+       3     IOPBEN             RW                                                      0
+                                     1：模块时钟开启；      0：模块时钟关闭。
+                                     IO 的 PA 端口模块时钟使能位：
+       2     IOPAEN             RW                                                      0
+                                     1：模块时钟开启；      0：模块时钟关闭。
+                                     HSADC 模块时钟使能位：
+       1     HSADCEN            RW                                                      0
+                                     1：模块时钟开启；     0：模块时钟关闭。
+                                     IO 辅助功能模块时钟使能位：
+       0     AFIOEN             RW                                                      0
+                                     1：模块时钟开启；   0：模块时钟关闭。
+
+
+3.4.9 HB1 外设时钟使能寄存器（RCC_HB1PCENR）
+       偏移地址：0x20
+31      30   29       28   27   26    25   24    23   22    21   20   19   18    17         16
+
+V1.7                                        31
+CH32H417 系列应用手册                                                                https://wch.cn
+
+
+SWPMI I2C3   DAC     PWR   BKP   CAN2 CAN1 CAN3 Reser I2C2 I2C1 USART5 USART4 USART3 USART2 SPI4
+ EN    EN    EN      EN    EN     EN   EN   EN   ved   EN   EN    EN     EN     EN     EN    EN
+ 15     14   13       12   11     10    9     8     7     6    5     4     3       2      1         0
+SPI3 SPI2 QSPI2 QSPI1 WWDG LPTIM LPTIM USART USART USART TIM7 TIM6 TIM5 TIM4 TIM3 TIM2
+ EN   EN   EN    EN    EN   2EN 1EN 8EN 7EN 6EN           EN   EN   EN   EN   EN   EN
+
+
+       位             名称          访问                           描述                          复位值
+                                       SWPMI 模块时钟使能位：
+       31    SWPMIEN             RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+                                       I2C3 模块时钟使能位：
+       30    I2C3EN              RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+                                       DAC 模块时钟使能位：
+       29    DACEN               RW                                                             0
+                                       1：模块时钟开启；    0：模块时钟关闭。
+                                       电源接口模块时钟使能位：
+       28    PWREN               RW                                                             0
+                                       1：模块时钟开启；  0：模块时钟关闭。
+                                       后备单元时钟使能位：
+       27    BKPEN               RW                                                             0
+                                       1：模块时钟开启；  0：模块时钟关闭。
+                                       CAN2 模块时钟使能位：
+       26    CAN2EN              RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+                                       CAN1 模块时钟使能位：
+       25    CAN1EN              RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+                                       CAN3 模块时钟使能位：
+       24    CAN3EN              RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+       23    Reserved            RO    保留。                                                      0
+                                       I2C2 模块时钟使能位：
+       22    I2C2EN              RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+                                       I2C1 模块时钟使能位：
+       21    I2C1EN              RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+                                       USART5 模块时钟使能位：
+       20    USART5EN            RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+                                       USART4 模块时钟使能位：
+       19    USART4EN            RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+                                       USART3 模块时钟使能位：
+       18    USART3EN            RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+                                       USART2 模块时钟使能位：
+       17    USART2EN            RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+                                       SPI4 模块时钟使能位：
+       16    SPI4EN              RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+                                       SPI3 模块时钟使能位：
+       15    SPI3EN              RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+                                       SPI2 模块时钟使能位：
+       14    SPI2EN              RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+                                       QSPI2 模块时钟使能位：
+       13    QSPI2EN             RW                                                             0
+                                       1：模块时钟开启；     0：模块时钟关闭。
+
+
+V1.7                                           32
+CH32H417 系列应用手册                                                                  https://wch.cn
+
+
+                                      QSPI1 模块时钟使能位：
+       12     QSPI1EN            RW                                                               0
+                                      1：模块时钟开启；     0：模块时钟关闭。
+                                      窗口看门狗时钟使能位：
+       11     WWDGEN             RW                                                               0
+                                      1：模块时钟开启； 0：模块时钟关闭。
+                                      LPTIM2 模块时钟使能位：
+       10     LPTIM2EN           RW                                                               0
+                                      1：模块时钟开启；     0：模块时钟关闭。
+                                      LPTIM1 模块时钟使能位：
+       9      LPTIM1EN           RW                                                               0
+                                      1：模块时钟开启；     0：模块时钟关闭。
+                                      USART8 模块时钟使能位：
+       8      USART8EN           RW                                                               0
+                                      1：模块时钟开启；     0：模块时钟关闭。
+                                      USART7 模块时钟使能位：
+       7      USART7EN           RW                                                               0
+                                      1：模块时钟开启；     0：模块时钟关闭。
+                                      USART6 模块时钟使能位：
+       6      USART6EN           RW                                                               0
+                                      1：模块时钟开启；     0：模块时钟关闭。
+                                      定时器 7 模块时钟使能位：
+       5      TIM7EN             RW                                                               0
+                                      1：模块时钟开启；    0：模块时钟关闭。
+                                      定时器 6 模块时钟使能位：
+       4      TIM6EN             RW                                                               0
+                                      1：模块时钟开启；    0：模块时钟关闭。
+                                      定时器 5 模块时钟使能位：
+       3      TIM5EN             RW                                                               0
+                                      1：模块时钟开启；    0：模块时钟关闭。
+                                      定时器 4 模块时钟使能位：
+       2      TIM4EN             RW                                                               0
+                                      1：模块时钟开启；    0：模块时钟关闭。
+                                      定时器 3 模块时钟使能位：
+       1      TIM3EN             RW                                                               0
+                                      1：模块时钟开启；    0：模块时钟关闭。
+                                      定时器 2 模块时钟使能位：
+       0      TIM2EN             RW                                                               0
+                                      1：模块时钟开启；    0：模块时钟关闭。
+
+
+3.4.10 后备域控制寄存器（RCC_BDCTLR）
+       偏移地址：0x24
+31      30    29       28   27   26    25     24       23   22    21   20    19      18    17         16
+                                            Reserved                                              BDRST
+15      14    13       12   11   10    9       8       7    6     5    4     3       2      1         0
+                                                       RTCSEL                      LSEBY LSERE
+                RTCCAL[6:0]                  RTCEN               ASOS ASOE   CCO               LSEON
+                                                       [1:0]                         P    DY
+
+
+       位              名称         访问                              描述                         复位值
+  [31:17] Reserved               RO   保留。                                                         0
+                                      后备域软件复位控制：
+       16     BDRST              RW   1：复位整个后备域。                                                  0
+                                      0：撤销复位。
+                                                                                     20
+                                      RTC 校准值寄存器，这个寄存器的值表示在每 2 个时
+     [15:9]   RTCCAL[6:0]        RW   钟脉冲中有多少个被跳过。这个功能用来校准 RTC 时                                  0
+                                      钟。RTC 时钟可以被减慢 0~121ppm。
+       8      RTCEN              RW   RTC 时钟使能控制：                                                 0
+
+V1.7                                            33
+CH32H417 系列应用手册                                                              https://wch.cn
+
+
+                                       1：使能 RTC 时钟；
+                                       0：关闭 RTC 时钟。
+                                       RTC 时钟源选择：
+                                       00：无时钟；
+       [7:6]   RTCSEL[1:0]        RW   01：LSE 振荡器作为 RTC 时钟；                                   0
+                                       10：LSI 振荡器作为 RTC 时钟；
+                                       11：HSE 振荡器经过 512 分频后作为 RTC 时钟。
+                                       PC13 引脚闹钟/秒脉冲输出选择：
+                                       1：输出秒脉冲；
+        5      ASOS               RW                                                          0
+                                       0：输出闹钟脉冲。
+                                       注：此位只会由后备域复位（BDRST）来复位。
+                                       PC13 引脚使能脉冲输出位：
+                                       1：使能输出闹钟脉冲或者秒脉冲；
+        4      ASOE               RW                                                          0
+                                       0：禁止输出闹钟脉冲或者秒脉冲。
+                                       注：此位只会由后备域复位（BDRST）来复位。
+                                       校准时钟输出选择位：
+                                       1：PC13 引脚输出经 64 分频的 RTC 时钟；
+        3      CCO                RW                                                          0
+                                       0：不输出校准时钟。
+                                       注：当 VDD33 供电断开时，该位被清除。
+                                       外部低速晶体（LSE）旁路控制位：
+                                       1：旁路外部低速晶体/陶瓷谐振器（使用外部时钟源）；
+        2      LSEBYP             RW                                                          0
+                                       0：不旁路低速外部晶体/陶瓷谐振器。
+                                       注：此位需在 LSEON 为 0 下写入。
+                                       外部低速晶体振荡稳定就绪标志位（由硬件置位）：
+                                       1：外部低速晶体振荡稳定；
+        1      LSERDY             RO                                                          0
+                                       0：外部低速晶体振荡没有稳定。
+                                       注：在 LSEON 位清 0 后，该位需要 6 个 LSE 周期清 0。
+                                       外部低速晶体振荡使能控制位：
+        0      LSEON              RW   1：使能 LSE 振荡器；                                          0
+                                       0：关闭 LSE 振荡器。
+注：后备域控制寄存器中（RCC_BDCTLR）的 LSEON、LSEBYP、CCO、ASOE、ASOS、RTCSEL、RTCEN 和 RTCCAL
+位处于后备域。因此，这些位在复位后处于写保护状态，只有在电源控制寄存器（PWR_CR）中的 DBP
+位置 1 后，才能对这些位进行改动。这些位可由后备域复位清除。任何内部或外部复位都不会影响这
+些位。
+
+3.4.11 控制/状态寄存器（RCC_RSTSCKR）
+       偏移地址：0x28
+31       30    29       28   27   26    25   24    23   22    21   20   19       18    17         16
+LKUP WWDG IWDG SFT POR PIN Reser
+                                  RMVF                             Reserved
+RSTF RSTF RSTF RSTF RSTF RSTF ved
+15       14    13       12   11   10    9     8    7    6     5    4     3       2      1         0
+                                                                                       LSI
+                                        Reserved                                           LSION
+                                                                                       RDY
+
+
+        位              名称         访问                         描述                         复位值
+
+V1.7                                          34
+CH32H417 系列应用手册                                                        https://wch.cn
+
+
+                                      LOCKUP 复位标志：
+                                      1：发生 LOCKUP 导致系统复位；
+       31     LKUPRSTF           RO                                                     0
+                                      0：正常。
+                                      发生 LOCKUP 复位时由硬件置 1；软件写 RMVF 位清除。
+                                      窗口看门狗复位标志：
+                                      1：发生窗口看门狗复位；
+       30     WWDGRSTF           RO   0：无窗口看门狗复位发生。                                     0
+                                      发生窗口看门狗复位时由硬件置 1；软件写 RMVF 位清
+                                      除。
+                                      独立看门狗复位标志：
+                                      1：发生独立看门狗复位；
+       29     IWDGRSTF           RO   0：无独立看门狗复位发生。                                     0
+                                      发生独立看门狗复位时由硬件置 1；软件写 RMVF 位清
+                                      除。
+                                      软件复位标志：
+                                      1：发生软件复位；
+       28     SFTRSTF            RO                                                     0
+                                      0：无软件复位发生。
+                                      发生软件复位时由硬件置 1；软件写 RMVF 位清除。
+                                      上电/掉电复位标志：
+                                      1：发生上电/掉电复位；
+       27     PORRSTF            RO   0：无上电/掉电复位发生。                                     1
+                                      发生上电/掉电复位时由硬件置 1；软件写 RMVF 位清
+                                      除。
+                                      外部手动复位（NRST引脚）标志：
+                                      1：发生NRST引脚复位；
+       26     PINRSTF            RO   0：无NRST引脚复位发生。                                    0
+                                      在NRST引脚复位发生时由硬件置1；软件写RMVF位清
+                                      除。
+       25     Reserved           RO   保留。                                               0
+                                      清除复位标志控制：
+       24     RMVF               W0   1：清除复位标志；                                         0
+                                      0：无作用。
+     [23:2]   Reserved           RO   保留。                                               0
+                                      内部低速时钟（LSI）稳定就绪标志位（由硬件置位）：
+                                      1：内部低速时钟（40kHz）稳定；
+       1      LSIRDY             RO                                                     0
+                                      0：内部低速时钟（40kHz）没有稳定。
+                                      注：在 LSION 位清 0 后，该位需要 3 个 LSI 周期清 0。
+                                      内部低速时钟（LSI）使能控制位：
+       0      LSION              RW   1：使能 LSI（40kHz）振荡器；                               0
+                                      0：关闭 LSI（40kHz）振荡器。
+注：除 BIT1 由上电复位清除，其他写清除复位标志可以清除。
+
+3.4.12 HB 外设复位寄存器（RCC_HBRSTR）
+       偏移地址：0x2C
+31      30    29       28   27   26    25   24    23   22   21   20   19   18    17         16
+
+
+V1.7                                         35
+CH32H417 系列应用手册                                                                      https://wch.cn
+
+
+                                                              PIOC Reser SERDE USBPD UHSIF OTGFS Reser
+                             Reserved
+                                                              RST ved SRST RST RST RST ved
+ 15      14    13       12      11      10    9    8     7     6     5     4     3       2      1         0
+Reser ETHMA DVP USBSS USBHS SDMMC RNG              FMC                                        DMA2 DMA1
+                                                                     Reserved
+ ved CRST RST RST RST RST RST                      RST                                        RST RST
+
+
+        位           名称               访问                             描述                          复位值
+   [31:22] Reserved                  RO      保留。                                                      0
+                                             PIOC 模块复位控制：
+        22     PIOCRST               RW                                                               0
+                                             1：复位模块；                  0：无作用。
+        21     Reserved              RO      保留。                                                      0
+                                             SERDES 模块复位控制：
+        20     SERDESRST             RW                                                               0
+                                             1：复位模块；                  0：无作用。
+                                             USBPD 模块复位控制：
+        19     USBPDRST              RW                                                               0
+                                             1：复位模块；                  0：无作用。
+                                             UHSIF 模块复位控制：
+        18     UHSIFRST              RW                                                               0
+                                             1：复位模块；                  0：无作用。
+                                             USBOTG_FS 模块复位控制：
+        17     OTGFSRST              RW                                                               0
+                                             1：复位模块；           0：无作用。
+   [16:15] Reserved                  RO      保留。                                                      0
+                                             以太网 MAC 模块复位控制：
+        14     ETHMACRST             RW                                                               0
+                                             1：复位模块；         0：无作用。
+                                             DVP 模块复位控制：
+        13     DVPRST                RO                                                               0
+                                             1：复位模块；                  0：无作用。
+                                             USBSS 模块复位控制：
+        12     USBSSRST              RW                                                               0
+                                             1：复位模块；                  0：无作用。
+                                             USBHS 模块复位控制：
+        11     USBHSRST              RW                                                               0
+                                             1：复位模块；                  0：无作用。
+                                             SDMMC 模块复位控制：
+        10     SDMMCRST              RW                                                               0
+                                             1：复位模块；                  0：无作用。
+                                             RNG 模块复位控制：
+        9      RNGRST                RW                                                               0
+                                             1：复位模块；                  0：无作用。
+                                             FMC 模块复位控制：
+        8      FMCRST                RW                                                               0
+                                             1：复位模块；                  0：无作用。
+       [7:2]   Reserved              RO      保留。                                                      0
+                                             DMA2 模块复位控制：
+        1      DMA2RST               RW                                                               0
+                                             1：复位模块；                  0：无作用。
+                                             DMA1 模块复位控制：
+        0      DMA1RST               RW                                                               0
+                                             1：复位模块；                  0：无作用。
+
+
+3.4.13 时钟配置寄存器 2（RCC_CFGR2）
+       偏移地址：0x30
+ 31      30    29       28     27       26    25   24    23    22    21   20    19       18    17         16
+ ETH1GSRC      HSADCSRC        Reserved I2S3S I2S2S RNGSR Reserved USBFS              USBFSDIV[3:0]
+
+V1.7                                                36
+CH32H417 系列应用手册                                                                    https://wch.cn
+
+
+  [1:0]         [1:0]                      RC   RC    C               SRC
+15      14    13       12     11   10      9    8     7     6     5   4        3       2      1         0
+ LTDCSRC                                              UHSIFSRC
+                            LTDCDIV[5:0]                                    UHSIFDIV[5:0]
+  [1:0]                                                [1:0]
+
+
+       位           名称              访问                            描述                           复位值
+                                        千兆以太网 125M 时钟源选择：
+                                        00：PLL 时钟（PLL_CLK）；
+  [31:30] ETH1GSRC[1:0]            RW   01：USBSS_PLL 时钟；                                            0
+                                        10：ETH_PLL 时钟 4 分频后输出；
+                                        11：SERDES_PLL 时钟 8 分频后输出。
+                                        HSADC 时钟源选择：
+                                        00：系统时钟（SYSCLK）；
+  [29:28] HSADCSRC[1:0]            RW   01：PLL 时钟（PLL_CLK）；                                         0
+                                        10：USBHS_PLL 时钟（480MHz）；
+                                        11：ETH_PLL 时钟（500MHz）。
+  [27:26] Reserved                 RO   保留。                                                         0
+                                        I2S3 时钟源：
+       25     I2S3SRC              RW   1：PLL 时钟（PLL_CLK）；                                          0
+                                        0：系统时钟（SYSCLK）。
+                                        I2S2 时钟源：
+       24     I2S2SRC              RW   1：PLL 时钟（PLL_CLK）；                                          0
+                                        0：系统时钟（SYSCLK）。
+                                        RNG 时钟源选择：
+       23     RNGSRC               RW   1：PLL 时钟（PLL_CLK）；                                          0
+                                        0：系统时钟（SYSCLK）。
+  [22:21] Reserved                 RO   保留。
+                                        USBFS 48M 时钟源选择：
+       20     USBFSSRC             RW   1：USBHS_PLL 时钟；                                             0
+                                        0：PLL 时钟。
+                                        USBFS 48M 时钟源预分频：
+                                        0000：不分频；        0001：2 分频；
+                                        0010：3 分频；      0011：4 分频；
+                                        0100：5 分频；      0101：6 分频；
+  [19:16] USBFSDIV[3:0]            RW   0110：8 分频；      0111：10 分频；                                 0
+                                        1000：1.5 分频；    1001：2.5 分频；
+                                        1010：3.5 分频；    1011：4.5 分频；
+                                        1100：5.5 分频；    1101：6.5 分频；
+                                        1110：7.5 分频；    1111：9.5 分频。
+                                        LTDC 时钟源选择：
+                                        00：PLL 时钟（PLL_CLK）；
+  [15:14] LTDCSRC[1:0]             RW   01：SERDES_PLL 时钟 2 分频；                                      0
+                                        10：ETH_PLL 时钟；
+                                        11：USBHS_PLL 时钟。
+     [13:8]   LTDCDIV[5:0]         RW   LTDC 时钟来源预分频控制：                                             0
+V1.7                                             37
+CH32H417 系列应用手册                                                                   https://wch.cn
+
+
+                                       000000：不分频；
+                                       000001：2 分频；
+                                       000010：3 分频；
+                                       000011：4 分频；
+                                       000100：5 分频；
+                                       ...
+                                       111110：63 分频；
+                                       111111：64 分频。
+                                       UHSIF 时钟源选择：
+                                       00：系统时钟（SYSCLK）；
+       [7:6]   UHSIFSRC[1:0]      RW   01：PLL 时钟（PLL_CLK）；                                         0
+                                       10：USBHS_PLL 时钟（480MHz）；
+                                       11：ETH_PLL 时钟（500MHz）。
+                                       UHSIF 时钟来源预分频控制：
+                                       000000：不分频；
+                                       000001：2 分频；
+                                       000010：3 分频；
+       [5:0]   UHSIFDIV[5:0]      RW   000011：4 分频；                                                0
+                                       000100：5 分频；
+                                       ...
+                                       111110：63 分频；
+                                       111111：64 分频。
+
+
+3.4.14 PLL 配置寄存器 2（RCC_PLLCFGR2）
+       偏移地址：0x34
+  31        30 29    28      27   26    25   24       23     22    21   20    19      18    17         16
+                                  Reserved                                    SERDESPLL_MUL[3:0]
+  15        14 13    12      11   10    9        8     7     6     5     4    3       2      1         0
+                                                      Rese   USBSSPLL_REFSEL USBHSPLL_R USBHSPLLSR
+       Reserved           USBHSPLL_IN_DIV[4:0]
+                                                      rved        [2:0]      EFSEL[1:0] C[1:0]
+
+
+        位            名称                访问                          描述                        复位值
+  [31:20] Reserved                     RO    保留。                                                   0
+                                             SERDES_PLL 时 钟 倍 频 系 数 ， 只 有 在
+                                             SERDES_PLLON 为 0 时才允许写：
+                                             0000：25 倍频输出；       0001：28 倍频输出；
+                                             0010：30 倍频输出； 0011：32 倍频输出；
+                                             0100：35 倍频输出； 0101：38 倍频输出；
+  [19:16] SERDESPLL_MUL[3:0]           RW                                      1000b
+                                             0110：40 倍频输出； 0111：45 倍频输出；
+                                             1000：50 倍频输出； 1001：56 倍频输出；
+                                             1010：60 倍频输出； 1011：64 倍频输出；
+                                             1100：70 倍频输出； 1101：76 倍频输出；
+                                             1110：80 倍频输出； 1111：90 倍频输出。
+  [15:13] Reserved                     RO    保留。                                                   0
+
+V1.7                                             38
+CH32H417 系列应用手册                                                   https://wch.cn
+
+
+                                         USBHS_PLL 输入时钟源 SYS_PLL 的分频设置，
+                                         只有在 USBHS_PLLON 为 0 时才允许写：
+               USBHSPLL_IN_DIV[4:        00000：不分频；
+   [12:8]                           RW                                             0
+               0]                        00001：2 分频；
+                                         …
+                                         11111：32 分频。
+        7      Reserved             RO   保留。                                       0
+                                         USBSS_PLL 参 考 时 钟 频 率 选 择 ， 只 有 在
+                                         USBSS_PLLON 为 0 时才允许写：
+                                         000：20MHz；
+                                         001：24MHz；
+               USBSSPLL_REFSEL[1:        010：25MHz；
+       [6:4]                        RW                                     010b
+               0]                        011：30MHz；
+                                         100：32MHz；
+                                         101：40MHz；
+                                         110：60MHz；
+                                         111：80MHz。
+                                         USBHS_PLL 参 考 时 钟 频 率 选 择 ， 只 有 在
+                                         USBHS_PLLON 为 0 时才允许写：
+               USBHSPLL_REFSEL[1:        00：25MHz；
+       [3:2]                        RW                                             0
+               0]                        01：20MHz；
+                                         10：24MHz；
+                                         11：32MHz。
+                                         USBHS_PLL 时钟源选择：
+                                         00：HSE；
+                                         01：HSI；
+       [1:0]   USBHSPLLSRC[1:0]     RW                                             0
+                                         10：ETHCLK_20M；
+                                         11：分频后的 SYS_PLL_CLK，分频系数参考
+                                         RCC_PLLCFGR2[12:8]。
+
+
+
+
+V1.7                                      39
+CH32H417 系列应用手册                                     https://wch.cn
+
+
+

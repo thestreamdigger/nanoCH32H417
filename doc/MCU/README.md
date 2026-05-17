@@ -6,6 +6,8 @@ These are the **silicon-level** references — distinct from the board-level doc
 
 ## Files
 
+### Originals from WCH
+
 | File | Size | Language | Content |
 |------|------|----------|---------|
 | `CH32H417_Datasheet_EN.PDF` | 1.8 MB | English | electrical specs, pinout (all packages), AC/DC characteristics, abs max ratings |
@@ -13,6 +15,23 @@ These are the **silicon-level** references — distinct from the board-level doc
 | `CH32H417_ReferenceManual_CN.PDF` | 7.9 MB | Chinese only (EN not published yet) | register-level reference: clock tree, PLL, every peripheral, memory map, boot ROM |
 | `architecture.png` | 210 KB | — | block diagram of MCU |
 | `system_block.jpg` | 337 KB | — | system-level peripheral grouping diagram |
+
+### English translation of the Reference Manual
+
+WCH has not published an English RM yet. This fork provides a translation layer:
+
+| File | Content |
+|------|---------|
+| [`CH32H417_ReferenceManual_EN_TOC.md`](CH32H417_ReferenceManual_EN_TOC.md) | Full 47-chapter TOC translated, with line numbers + 1-line summaries |
+| [`CH32H417_RM_Ch03_RCC_EN.md`](CH32H417_RM_Ch03_RCC_EN.md) | **Chapter 3 — RCC** (clock tree, PLL, I2S clock source) — audio-project relevant |
+| [`CH32H417_RM_Ch23_SPI_I2S_EN.md`](CH32H417_RM_Ch23_SPI_I2S_EN.md) | **Chapter 23 — SPI/I2S** (I2S TX config, formats, DMA) — audio-project relevant |
+| `_extracted/rm_full.txt` | full plain-text dump of the RM (50,036 lines) — for grep / on-demand chapter extraction |
+| `_extracted/ch03_rcc_cn.txt` | RCC chapter raw text (1847 lines) |
+| `_extracted/ch23_spi_i2s_cn.txt` | SPI/I2S chapter raw text (1207 lines) |
+
+Register names, bit-field names, and code listings inside the PDF are already in English. The translations target the narrative + tables that summarize peripheral behavior.
+
+Add more chapter translations on demand — see TOC for line ranges.
 
 ## What's missing
 

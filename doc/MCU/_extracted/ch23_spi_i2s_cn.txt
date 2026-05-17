@@ -1,0 +1,1207 @@
+                  第 23 章 串行外设接口（SPI/I2S）
+  芯片内置 4 组串行外设 SPI 接口（SPI1/2/3/4），SPI 支持以三线同步串行模式进行数据交互，
+加上片选线支持硬件切换主从模式，支持以单根数据线通讯。
+  I2S 也是三线的同步串行接口通信协议，它支持四种音频标准，包括飞利浦 I2S 标准、MSB 对齐
+标准、LSB 对齐标准和 PCM 标准。
+
+
+23.1 主要特征
+23.1.1 SPI 特征
+      支持全双工同步串行模式
+      支持单线半双工模式
+      支持主模式和从模式，多从模式
+      支持 8 位或 16 位数据结构
+      最高时钟频率支持到 FHCLK 的一半
+      数据顺序支持 MSB 或 LSB 在前
+      支持硬件或软件控制 NSS 引脚
+      收发支持硬件 CRC 校验
+      收发缓冲器支持 DMA 传输
+      支持修改时钟相位和极性
+
+23.1.2 I2S 特征
+      支持单工通信
+      支持主模式和从模式
+      支持 16 位、24 位和 32 位数据格式
+      音频采样频率支持范围 8kHz-562.2kHz
+      支持时钟极性可编程
+      支持常用 I2S 协议：飞利浦标准、MSB 对齐标准、LSB 对齐标准和 PCM 标准
+      收发缓冲器支持 DMA 传输
+      支持主时钟向外部音频设备输出
+
+
+
+
+V1.7                           388
+CH32H417 系列应用手册                                                                    https://wch.cn
+
+
+
+23.2 SPI 功能描述
+23.2.1 概述
+                                   图 23-1 SPI 结构框图
+
+                                 Address and data bus
+
+                          Read
+                    Rx buffer
+       MOSI                                                SPI_CTLR2
+                                                      TXE RXNE ERR         0   0   SSOE TXDM RXDM
+                                                      IE   IE  IE                       AEN AEN
+                  Shift register
+       MISO
+                                     LSB first         SPI_STATR
+
+                    Tx buffer                         BSY     OVR MODF CRC
+                                                                       ERR     0    0   TXE RXNE
+
+
+                          Write
+
+                                                              Communication             0
+                                                                 control                1
+        SCK              Baud rate               BR[2:0]
+                         generator
+                                                   LSB
+                                                  FIRST SPE    BR2   BR1   BR0 MSTR CPOL CPHA
+
+                                                                     SPI_CTLR1
+                   Master control logic             BIDI BIDI CRC CRC DFF RX SSM            SSI
+                                                    MODE OE    EN Next    ONLY
+
+
+       NSS
+
+
+
+    由图 23-1 可以看出，与 SPI 相关的主要是 MISO、MOSI、SCK 和 NSS 四个引脚。其中 MISO 引脚在
+SPI 模块工作在主模式下时，是数据输入引脚；工作在从模式下时，是数据输出引脚。MOSI 引脚工作
+在主模式下时，是数据输出引脚；工作在从模式时，是数据输入引脚。SCK 是时钟引脚，时钟信号一
+直由主机输出，从机接收时钟信号并同步数据收发。NSS 引脚是片选引脚，有以下用法：
+1） NSS 由软件控制：此时 SSM 被置位，内部 NSS 信号由 SSI 决定输出高还是低，这种情况一般用于
+    SPI 主模式；
+2） NSS 由硬件控制：在 NSS 输出使能时，即 SSOE 置位时，在 SPI 主机向外发送输出时会主动拉低
+    NSS 引脚，如果不能成功拉低 NSS 脚，说明主线上还有其他主设备正在通信，则会产生一个硬件
+    错误；SSOE 不置位，则可以用于多主机模式，如果它被拉低则会强行进入从机模式，MSTR 位会
+    被自动清除。
+    可以通过 CPHA 和 CPOL 配置 SPI 的工作模式。CPHA 置位表示模块在时钟的第二个边沿进行数据
+采样，数据被锁存，CPHA 不置位表示 SPI 模块在时钟的第一个边沿进行采样，数据被锁存。CPOL 则
+表示无数据时时钟保持高电平还是低电平。具体见下图 23-2。
+
+
+
+
+V1.7                                       389
+CH32H417 系列应用手册                                    https://wch.cn
+
+
+                                   图 23-2 SPI 模式
+
+                                         CPHA=1
+           CPOL=1
+
+
+           CPOL=0
+
+
+          MOSI             MSBit                    LSBit
+
+
+          MISO             MSBit                      LSBit
+
+
+          NSS
+       (to slave)
+
+       Capture strobe
+
+
+                                         CPHA=0
+           CPOL=1
+
+           CPOL=0
+
+
+          MOSI             MSBit                    LSBit
+
+
+          MISO           MSBit                      LSBit
+
+
+            NSS
+        (to slave)
+
+        Capture strobe
+
+
+
+    主机和设备需要设置为相同的 SPI 模式，在配置 SPI 模式前，需要清除 SPE 位。DEF 位可以决定
+SP 的单个数据长度是 8 位还是 16 位。LSBFIRST 可以控制单个数据字是高位在前还是低位在前。
+
+23.2.2 主模式
+  在 SPI 模块工作在主模式时，由 SCK 产生串行时钟。配置成主模式进行以下步骤：
+  配置控制寄存器的 BR[2:0]域来确定时钟；
+  配置 CPOL 和 CPHA 位来确定 SPI 模式；
+  配置 DEF 确定数据字长；
+  配置 LSBFIRST 确定帧格式；
+  配置 NSS 引脚，比如置 SSOE 位让硬件去置 NSS。也可以置 SSM 位并把 SSI 位置高；
+  置 MSTR 位和 SPE 位，需要保证 NSS 此时已经是高。
+  需要发送数据时只需要向数据寄存器写要发送的数据就行了。SPI 会从发送缓冲区并行地把数据
+送到移位寄存器，然后按照 LSBFIRST 的设置将数据从移位寄存器发出去，当数据已经到了移位寄存
+V1.7                                   390
+CH32H417 系列应用手册                                  https://wch.cn
+
+
+器时，TXE 标志会被置位，如果已经置位了 TXEIE，那么会产生中断。如果 TXE 标志位置位需要向数
+据寄存器里填数据，维持完整的数据流。
+  当接收器接收数据时，当数据字的最后一个采样时钟沿到来时，数据从移位寄存器并行地转移到
+接收缓冲区，RXNE 位被置位，如果之前置位了 RXNEIE 位，还会产生中断。此时应该尽快读取数据寄
+存器取走数据。
+
+23.2.3 从模式
+  当 SPI 模块工作在从模式时，SCK 用于接收主机发来的时钟，自身的波特率设置无效。配置成从
+模式的步骤如下：
+  配置 DEF 位设置数据位长度；
+  配置 CPOL 和 CPHA 位匹配主机模式；
+  配置 LSBFIRST 匹配主机数据帧格式；
+  硬件管理模式下，NSS 管脚需要保持为低电平，如果设置 NSS 为软件管理（SSM 置位），那么请
+保持 SSI 不被置位；
+  清除 MSTR 位，置 SPE 位，开启 SPI 模式。
+  在发送时，当 SCK 出现第一个从机接收采样沿时，从机开始发送。发送的过程就是发送缓冲区的
+数据移到发送移位寄存器，当发送缓冲区的数据移到了移位寄存器之后，会置位 TXE 标志，如果之前
+置位了 TXEIE 位，那么会产生中断。
+  在接收时，最后一个时钟采样沿之后，RXNE 位被置位，移位寄存器接收到的字节被转移到接收缓
+冲区，读数据寄存器的读操作可以获得接收缓冲区里的数据。如果在 RXNE 置位之前 RXNEIE 已经被置
+位，那么会产生中断。
+
+23.2.4 单工模式
+  SPI 接口可以工作在半双工模式，即主设备使用 MOSI 引脚，从设备使用 MISO 引脚进行通讯。使
+用半双工通讯时需要把 BIDIMODE 置位，使用 BIDIOE 控制传输方向。
+  在正常全双工模式下将 RXONLY 位置位可以将 SPI 模块设置为仅仅接收的单工模式，在 RXONLY 置
+位之后会释放一个数据脚，主模式和从模式释放的引脚并不相同。也可以不理会接收的数据将 SPI 置
+成只发送的模式。
+
+23.2.5 CRC
+    SPI 模块使用 CRC 校验保证全双工通信的可靠性，数据收发分别使用单独的 CRC 计算器。CRC 计
+算的多项式由多项式寄存器决定，对于 8 位数据宽度和 16 位数据宽度，会分别使用不同的计算方法。
+    设置 CRCEN 位会启用 CRC 校验，同时会使 CRC 计算器复位。在发送完最后一个数据字节后，置
+CRCNEXT 位会在当前字节发送结束后发送 TXCRCR 计算器的计算结果，同时最后接收到的接收移位寄
+存器的值如果与本地算出来的 RXCRCR 的计算值不相符，那么 CRCERR 位会被置位。使用 CRC 校验需要
+在配置 SPI 工作模式时设置多项式计算器并置 CRCEN 位，并在最后一个字或半字置 CRCNEXT 位发送
+CRC 并进行接收 CRC 的校验。注意，收发双方的 CRC 计算多项式应该统一。
+
+23.2.6 DMA
+  SPI 模块支持使用 DMA 加快数据通讯速度，可以使用 DMA 向发送缓冲区填写数据，或使用 DMA 从
+接收缓冲区及时取走数据。DMA 会以 RXNE 和 TXE 为信号及时取走或发来数据。DMA 也可以工作在单工
+或加 CRC 校验的模式。
+
+23.2.7 错误
+      主模式失效错误
+       当 SPI 工作在 NSS 引脚硬件管理模式下，发生了外部拉低 NSS 引脚的操作；或在 NSS 引脚软件管
+
+V1.7                           391
+CH32H417 系列应用手册                                    https://wch.cn
+
+
+理模式下，SSI 位被清零；或 SPE 位被清零，导致 SPI 被关闭；或 MSTR 位被清零，SPI 进入从模式。
+如果 ERRIE 位已经被置位，还会产生中断。清除 MODF 位步骤：首先执行一次对 R16_SPI1_STATR 的读
+或写操作，然后写 R16_SPI1_CTLR1。
+
+ 溢出错误
+  如果主机发送了数据，而从设备的接收缓冲区中还有未读取的数据，就会发生溢出错误，OVR 位
+被置位，如果 ERRIE 被置位还会产生中断。发送溢出错误应该重新开始当前传输。读取数据寄存器再
+读取状态寄存器会消除此位。
+
+      CRC 错误
+       当接收到的 CRC 校验字和 RXCRCR 的值不匹配时，会产生 CRC 校验错误，CRCERR 位会被置位。
+
+23.2.8 中断
+   SPI 模块的中断支持五个中断源，其中发送缓冲区空、接收缓冲区非空这两个事件分别会置位 TXE
+和 RXNE，在分别置位了 TXEIE 和 RXNEIE 位的情况下会产生中断。除此之外上面提到的三种错误也会
+产生中断，分别是 MODF、OVR 和 CRCERR，在使能了 ERRIE 位之后，这三种错误也会产生错误中断。
+
+
+
+
+V1.7                            392
+CH32H417 系列应用手册                                                                                               https://wch.cn
+
+
+
+23.3 I2S 功能描述
+23.3.1 I2S 概述
+                                               图 23-3 I2S 结构框图
+
+
+
+                                                                                 Address and data bus
+
+                                                                  Tx buffer
+                                                                                     BYS OVR MODF CRC UDR CH TxE RxNE
+                                                                                                  ERR     SIDE
+                                                                        16-bit
+       MOSI/SD
+
+         MISO                                                  Shift register         LSB first
+                                                                                                              Communication
+                                                                        16-bit                                control
+                                                                  Rx buffer
+
+
+       NSS/WS
+
+
+                                                                           I2SCFG    I2SSTD       CK DATLEN    CH
+                                                                             (1:0)    (1:0)       POL (1:0)    LEN
+                                                                                                         I2S
+                                                                                                             I2SE
+                                                                                                        MOD
+
+                               Master control logic
+                                                                          Bidi Bidi CRC CRC     Rx
+                                                                                            DFF      SSM SSI
+                                                                         mode OE EN Next        only
+
+                                                                              LSB
+                                       SPI                                    First
+                                                                                    SPE BR2 BR1 BR0 MSTR CPOLCPHA
+                               Baud rate generator
+          CK
+
+
+                      I2S_CK
+                                                      I2S Clock generator
+                 I2SMOD
+         MCK
+                                                      MCKOE ODD                  I2SDIV[7:0]                    I2SxCLK
+
+
+
+
+  通过将寄存器 I2SCFGR 的 I2SMOD 位置位，使能 I2S 功能。此时，可以把 SPI 模块用作 I2S 音频
+接口。I2S 与 SPI 共用 3 个引脚：
+  ● SD：串行数据（映射至 MOSI 引脚），用来发送和接收 2 路时分复用通道的数据；
+  ● WS：字选（映射至 NSS 引脚），主模式下作为数据控制信号输出，从模式下作为输入；
+  ● CK：串行时钟（映射至 SCK 引脚），主模式下作为时钟信号输出，从模式下作为输入。
+  在某些外部音频设备需要主时钟时，可以另有一个附加引脚输出时钟：
+  ● MCK：主时钟（独立映射），在 I2S 配置为主模式，寄存器 I2SPR 的 MCKOE 位为 1 时，作为输
+出额外的时钟信号引脚使用。输出时钟信号的频率预先设置为 256×Fs，其中 Fs 是音频信号的采样
+频率。
+  设置成主模式时，I2S 使用自身的时钟发生器来产生通信用的时钟信号。这个时钟发生器也是主
+时钟输出的时钟源。I2S 模式下有 2 个额外的寄存器，一个是与时钟发生器配置相关的寄存器 I2SPR，
+另一个是 I2S 通用配置寄存器 I2SCFGR（可设置音频标准、从/主模式、数据格式、数据包帧、时钟极
+性等参数）。在 I2S 模式下不使用寄存器 CTLR1 和所有的 CRCR 寄存器。同样，I2S 模式下也不使用寄
+
+V1.7                                                     393
+CH32H417 系列应用手册                                                                           https://wch.cn
+
+
+存器 CTLR2 的 SSOE 位，和寄存器 STATR 的 MODF 位和 CRCERR 位。I2S 使用与 SPI 相同的寄存器 DATAR
+用作 16 位宽模式数据传输。
+
+23.3.2 支持的音频协议
+  三线总线支持 2 个声道上音频数据的时分复用：左声道和右声道，但是只有一个 16 位寄存器用
+作发送或接收。因此，软件必须在对数据寄存器写入数据时，根据当前传输中的声道写入相应的数据；
+同样，在读取寄存器数据时，通过检查寄存器 STATR 的 CHSIDE 位来判断接收到的数据属于哪个声道。
+左声道总是先于右声道发送数据（CHSIDE 位在 PCM 协议下无意义）。有四种可用的数据和包帧组合。
+可以通过以下四种数据格式发送数据：
+  ● 16 位数据打包进 16 位帧
+  ● 16 位数据打包进 32 位帧
+  ● 24 位数据打包进 32 位帧
+  ● 32 位数据打包进 32 位帧
+
+    在使用 16 位数据扩展到 32 位帧时，前 16 位（MSB）是有意义的数据，后 16 位（LSB）被强制为
+0，该操作不需要软件干预，也不需要有 DMA 请求（仅需要一次读或写操作）。24 位和 32 位数据帧需
+要 CPU 对寄存器 DATAR 进行 2 次读或写操作，在使用 DMA 时，需要 2 次 DMA 传输。对于 24 位数据，
+扩展到 32 位后，最低 8 位由硬件置 0。对于所有的数据格式和通讯标准，总是先发送最高位（MSB）。
+I2S 接口支持四种音频标准，可以通过设置寄存器 I2SCFGR 的 I2SSTD[1:0]位和 PCMSYNC 位来选择。
+
+23.3.2.1 I2S 飞利浦标准
+    在此标准下，引脚 WS 用来指示正在发送的数据属于哪个声道。在发送第一位数据（MSB）前 1 个
+时钟周期，该引脚即为有效。发送方在时钟信号（CK）的下降沿改变数据，接收方在上升沿读取数据。
+WS 信号也在时钟信号的下降沿变化。
+                 图 23-4 飞利浦协议波形（16/32 全精度，CPOL=0）
+
+
+           CK
+
+           WS
+                        Transmission                Reception
+                            May be16-bit,32-bit
+           SD
+                      MSB                                       LSB MSB
+
+                             Channel left                                 Channle right
+
+
+
+
+V1.7                                              394
+CH32H417 系列应用手册                                                                                                       https://wch.cn
+
+
+                             图 23-5 飞利浦协议波形（24 位帧，CPOL=0）
+
+
+
+             CK
+
+                                        Transmission
+             WS                                                     Reception
+                                            24-bit data                  8-bit remaining
+
+             SD                  MSB                         LSB
+
+
+                                                    Channel left 32 -bit                             Channel right
+
+
+
+   此模式需要对寄存器 SPI_DATAR 进行 2 次读或写操作。在发送模式下：如果需要发送 0x8EAA33
+（24 位）：
+
+
+
+             First write to Data register                            Second write to Data register
+
+                    0x8EAA                                                     0x33XX
+                                                                    Only the 8 MSB are sent to complete the 24 bits
+                                                                    8 LSB bit have no meaning and could be
+                                                                    anything
+
+
+
+       在接收模式下：如果接收 0x8EAA33：
+
+
+
+                       First read from Data register                                 Second read from Data register
+
+                             0x8EAA                                                           0x3300
+
+                                                                                     Only the 8MSB are right
+                                                                                     The 8 LSB will always be 00
+
+
+
+
+              图 23-6 飞利浦协议标准波形（16 位扩展至 32 位包帧，CPOL=0）
+
+
+
+                  CK
+
+
+                  WS                        Transmission                  Reception
+                                               16-bit data                16-bit remaining
+                                                                          0 forced
+
+                  SD              MSB                          LSB
+
+
+                                            Channel left 32-bit                                            Channel right
+
+
+
+
+    在 I2S 配置阶段，如果选择将 16 位数据扩展到 32 位声道帧，只需要访问一次寄存器 DATAR 用来
+扩展到 32 位的低 16 位被硬件置为 0x0000。如果待传输或接收的数据是 0x76A3（扩展到 32 位是
+0x76A30000），只需要操作一次 DATAR。在发送时需要将 MSB 写入寄存器 DATAR；标志位 TXE 为 1 表
+
+V1.7                                                               395
+CH32H417 系列应用手册                                                                             https://wch.cn
+
+
+示可以写入新的数据，如果允许了相应的中断，则可以产生中断。发送是由硬件完成的，即使还未发
+送出后 16 位的 0x0000，也会设置 TXE 并产生相应的中断。接收时，每次收到高 16 位半字（MSB）后，
+标志位 RXNE 置 1，如果允许了相应的中断，则可以产生中断。这样，在 2 次读和写之间有更多的时
+间，可以防止下溢或上溢的情况发生。
+
+23.3.2.2 MSB 对齐标准
+    在此标准下，WS 信号和第一个数据位，即最高位（MSB）同时产生。
+                 图 23-7 MSB 对齐 16 位或 32 位全精度（CPOL = 0）
+
+
+
+             CK
+
+
+             WS
+                         Transmission Peception
+
+
+                                    May be 16-bit,32-bit
+             SD
+                   MSB                                            LSB MSB
+
+                             Channel left                                   Channel right
+
+
+
+
+       发送方在时钟信号的下降沿改变数据；接收方是在上升沿读取数据。
+                  图 23-8 MSB 对齐 24 位数据，CPOL = 0
+
+
+             CK
+
+
+             WS             Transmission          Reception
+                              24-bit data            8-bit remaining
+                                                     0 forced
+             SD      MSB                    LSB
+
+
+
+                               Channel left 32-bit                                Channel right
+
+
+
+
+V1.7                                          396
+CH32H417 系列应用手册                                                                             https://wch.cn
+
+
+                  图 23-9 MSB 对齐 16 位数据扩展到 32 位包帧，CPOL = 0
+
+
+
+
+             CK
+
+                               Transmission              Reception
+             WS
+                                  16-bit data            16-bit remaining
+                                                         0 forced
+             SD          MSB                     LSB
+
+
+                                            Channel left 32-bit                       Channel right
+
+
+
+23.3.2.3 LSB 对齐标准
+    此标准与 MSB 对齐标准类似（在 16 位或 32 位全精度帧格式下无区别）。
+                  图 23-10 LSB 对齐 16 或 32 位全精度，CPOL = 0
+
+
+
+            CK
+
+
+            WS
+                         Transmission Peception
+
+
+                                      May be 16-bit,32-bit
+             SD
+                   MSB                                               LSB MSB
+
+                               Channel left                                     Channel right
+
+
+
+
+                          图 23-11 LSB 对齐 24 位数据，CPOL = 0
+
+
+
+            CK
+
+
+           WS                                            Transmission          Reception
+                               8-bit data                24-bit remaining
+                                0 forced
+           SD                                     MSB                           LSB
+
+
+                                      Channel left 32 -bit                        Channel right
+
+
+
+
+       在发送模式下如果要发送数据 0x3478AE，
+                             需要通过软件或 DMA 对寄存器 DATAR 进行 2 次写操作。
+
+
+V1.7                                               397
+CH32H417 系列应用手册                                                                                         https://wch.cn
+
+
+
+          TEX='1 ' when the data register is written         TEX='1 ' when the data register is written
+                      for the first time                               for the second time
+                    0xXX34                                                    0x78AE
+           Only the lower 8 bits in the halfword have meaning, the higher 8 bits are forced to
+           be set to 0x00
+
+
+
+
+    在接收模式下如果要接收数据 0x3478AE，需要在 2 个连续的 RXNE 事件发生时，分别对寄存器
+DATAR 进行 1 次读操作。
+
+         RXNE='1' when the data register is read out            RXNE='1' when the data register is read out
+                     for the first time                                   for the second time
+                     0xXX34                                                     0x78AE
+            Only the lower 8 bits in the halfword have meaning, the higher 8 bits are forced to
+            be set to 0x00
+
+
+
+                   图 23-12 LSB 对齐 16 位数据扩展到 32 位包帧， CPOL = 0
+
+
+             CK
+
+
+                                                               Transmission                 Reception
+             WS
+                              16-bit data                     Remaining 16-bit data
+                              0 forced
+             SD                                        MSB                            LSB
+
+
+
+                                 Channel left 32-bit                                        Channel right
+
+
+
+
+  在 I2S 配置阶段，如果选择将 16 位数据扩展到 32 声道帧，只需要访问一次寄存器 DATAR。此时，
+扩展到 32 位后的高半字（16 位 MSB）被硬件置为 0x0000。
+  如果待传输或接收的数据是 0x76A3（扩展到 32 位是 0x000076A3），只需要操作一次 DATAR，在
+发送时，如果 TXE 为 1，用户需要写入待发送的数据（即 0x76A3）。用来扩展到 32 位的 0x0000 部分
+由硬件首先发送出去，一旦有效数据开始从 SD 引脚送出，即发生下一次 TXE 事件。在接收时，一旦
+接收到有效数据（而不是 0x0000 部分），即发生 RXNE 事件。这样，在 2 次读和写之间有更多的时间，
+可以防止下溢或上溢的情况发生。
+
+23.3.2.4 PCM 标准
+    在 PCM 标准下，不存在声道选择的信息。PCM 标准有 2 种可用的帧结构，短帧或长帧，可以通过
+设置寄存器 I2SCFGR 的 PCMSYNC 位来选择。
+
+
+
+
+V1.7                                                   398
+CH32H417 系列应用手册                                                https://wch.cn
+
+
+                           图 23-13 PCM 标准波形（16 位）
+
+            CK
+
+
+
+           WS
+           Short
+           frame
+                                     - bit
+                           fixed to 13
+           WS
+           long
+           frame
+                                  16-bit
+            SD      MSB                            LSB   MSB
+
+
+
+
+  对于长帧，主模式下，用来同步的 WS 信号有效的时间固定为 13 位。对于短帧，用来同步的 WS
+信号长度只有 1 位。
+               图 23-14 PCM 标准波形（16 位）
+
+
+            CK
+
+            WS
+            short
+            frame
+                     fixed to 13-bit
+            WS
+            long
+            frame
+                                   16-bit
+            SD       MSB               LSB
+
+
+
+
+  无论哪种模式（主或从）、哪种同步方式（短帧或长帧），连续的 2 帧数据之间和 2 个同步信号
+之间的时间差，（即使是从模式）需要通过设置 I2SCFGR 寄存器的 DATLEN 位和 CHLEN 位来确定。
+
+23.3.3 时钟发生器
+  I2S 的比特率即确定了在 I2S 数据线上的数据流和 I2S 的时钟信号频率。I2S 比特率 = 每个声道
+的比特数×声道数目×音频采样频率。
+  对于一个具有左右声道和 16 位音频信号，I2S 比特率计算如下：
+  I2S 比特率 = 16 × 2 × Fs
+  如果包长为 32 位，I2S 比特率计算如下：
+  I2S 比特率 = 32 × 2 × Fs
+
+
+
+
+V1.7                                         399
+CH32H417 系列应用手册                                                                                                            https://wch.cn
+
+
+                                                          图 23-15 音频采样频率定义
+
+
+
+                              16-bit or 32-bit left channel            16-bit or 32-bit right channel
+
+
+                                                           16-bit or 32-bit
+
+                                                                   Fs
+                   Sample point                                                                    Sample point
+                                                      Fs: Audio sampling frequency
+
+
+
+
+       在主模式下，为了获得需要的音频频率，需要正确地对线性分频器进行设置。
+                    图 23-16 I2S 时钟发生器结构
+
+
+
+
+                                                                                                                                     MCK
+
+
+
+
+                                                                                                                                CK
+                                                                                                                       0
+         I2SxCLK                                                                                                       1
+                          8-bit Linear
+                          Divider +                            Divider
+                                                                    c by 4                  Div2
+                                                                                             c             0
+                          Reshaping stage                                                                  1
+
+                                                                                                                   MCKOE
+
+
+                         MCKOE ODD          I2SDIV[7:0]                       I2SMOD                       CHLEN
+
+
+
+
+    图中 I2SxCLK 的时钟源是系统时钟（即驱动 HB 时钟的 HSI、HSE 或 PLL）。I2SxCLK 可以来自
+SYSCLK，或 PLL3 VCO（2xPLL3CLK）时钟，可以通过 RCC_CFGR2 寄存器的 I2S2SRC 和 I2S3SRC 位选择。
+音频的采样频率可以是 96kHz、48kHz、44.1kHz、32kHz、22.05kHz、16kHz、11.025kHz 或 8kHz（或
+任何此范围内的数值）。为了获得需要的频率，需按照以下公式设置线性分频器：
+    当需要生成主时钟时（寄存器 SPI_I2SPR 的 MCKOE 位为 1）：
+    声道的帧长为 16 位时， Fs = I2SxCLK / [（16*2） * （（2*I2SDIV） + ODD）*8]
+    声道的帧长为 32 位时， Fs = I2SxCLK / [（32*2） * （（2*I2SDIV） + ODD）*4]
+    当关闭主时钟时（MCKOE 位为’0’）：
+    声道的帧长为 16 位时， Fs = I2SxCLK / [（16*2） * （（2*I2SDIV） + ODD）]
+    声道的帧长为 32 位时， Fs = I2SxCLK / [（32*2） * （（2*I2SDIV） + ODD）]
+
+23.3.4 I2S 主模式
+   设置 I2S 工作在主模式，串行时钟由引脚 CK 输出，字选信号由引脚 WS 产生。可以通过设置寄存
+器 I2SPR 的 MCKOE 位来选择输出或不输出主时钟（MCK）。
+
+23.3.4.1 配置流程
+     设置寄存器 I2SPR 的 I2SDIV[7:0]定义与音频采样频率相符的串行时钟波特率。同时也要定
+义寄存器 I2SPR 的 ODD 位。
+     设置 CKPOL 位定义通信时钟在空闲时的电平状态。如果需要向外部的 DAC/ADC 音频器件提供
+主时钟 MCK，需寄存器 I2SPR 的 MCKOE 位置为。
+
+V1.7                                                                     400
+CH32H417 系列应用手册                                        https://wch.cn
+
+
+   设置寄存器 I2SCFGR 的 I2SMOD 位为 1 激活 I2S 功能，设置 I2SSTD[1:0]和 PCMSYNC 位选择
+所用的 I2S 标准，
+          设置 CHLEN 选择每个声道的数据位数。      还要设置寄存器 SPI_I2SCFGR 的 I2SCFG[1:0]
+选择 I2S 主模式和方向（发送端还是接收端）。
+   如果需要，可以通过设置寄存器 CR2 来打开所需的中断功能和 DMA 功能。
+   必须将寄存器 I2SCFGR 的 I2SE 位置为 1。
+   引脚 WS 和 CK 需要配置为输出模式。如果寄存器 SPI_I2SPR 的 MCKOE 位为 1，引脚 MCK 也要
+配置成输出模式。
+
+23.3.4.2 发送流程
+    当写入 1 个半字（16 位）的数据至发送缓存，发送流程开始。假设第一个写入发送缓存的数据对
+应的是左声道数据。当数据从发送缓存移到移位寄存器时，标志位 TXE 置 1，这时，要把对应右声道
+的数据写入发送缓存。标志位 CHSIDE 提示了目前待传输的数据对应哪个声道。标志位 CHSIDE 的值在
+TXE 为 1 时更新，因此它在 TXE 为 1 时有意义。在先左声道后右声道的数据都传输完成后，才能被认
+为是一个完整的数据帧。不可以只传输部分数据帧，如仅有左声道的数据。
+    当发出第一位数据的同时，半字数据被并行地传送至 16 位移位寄存器，然后后面的位依次按高
+位在先的顺序从引脚 MOSI/SD 发出。每次数据从发送缓存移至移位寄存器时，标志位 TXE 置为 1，如
+果寄存器 CR2 的 TXEIE 位为 1，则产生中断。
+    为了保证连续的音频数据传输，建议在当前传输完成之前，对寄存器 DATAR 写入下一个要传输的
+数据。建议在要关闭 I2S 功能时，等待标志位 TXE=1 及 BSY=0，再将 I2SE 位清 0。
+
+23.3.4.3 接收流程
+    接收流程的配置步骤除了第 3 点外，与发送流程的一致（参见前述的”发送流程”），需要通过
+配置 I2SCFG[1:0]来选择主接收模式。无论何种数据和声道长度，音频数据总是以 16 位包的形式接
+收。即每次填满接收缓存后，标志位 RXNE 置 1，如果寄存器 CR2 的 RXNEIE 位为 1，则产生中断。根
+据配置的数据和声道长度，收到左声道或右声道的数据会需要 1 次或 2 次把数据传送到接收缓存的过
+程。对寄存器 DATAR 进行读操作即可清除 RXNE 标志位。每次接收以后即更新 CHSIDE。它的值取决于
+I2S 单元产生的 WS 信号。如果前一个接收到的数据还没有被读取，又接收到新数据，即发生上溢，标
+志位 OVR 被置为 1，如果寄存器 CR2 的 ERRIE 位为 1，则产生中断，表示发生了错误。若要关闭 I2S
+功能，需要执行特别的操作，以保证 I2S 模块可以正常地完成传输周期而不会开始新的数据传输。操
+作过程与数据配置和通道长度、以及音频协议的模式相关：
+     16 位数据扩展到 32 位通道长度（DATLEN=00 并且 CHLEN=1），使用 LSB（低位）对齐模式
+        （I2SSTD=10）
+    a）等待倒数第二个（n-1）RXNE=1；
+    b）等待 17 个 I2S 时钟周期（使用软件延迟）；
+    c）关闭 I2S（I2SE=0）。
+     16 位数据扩展到 32 位通道长度（DATLEN=00 并且 CHLEN=1），使用 MSB（高位）对齐、I2S
+        或 PCM 模式（分别为 I2SSTD=00、I2SSTD=01 或 I2SSTD=11）
+    a）等待最后一个 RXNE=1；
+    b）等待 1 个 I2S 时钟周期（使用软件延迟）；
+    c）关闭 I2S（I2SE=0）。
+     所有其它 DATLEN 和 CHLEN 的组合，I2SSTD 选择的任意音频模式，使用下述方式关闭 I2S：
+    a）等待倒数第二个（n-1）RXNE=1；
+    b）等待一个 I2S 时钟周期（使用软件延迟）；
+    c）关闭 I2S（I2SE=0）。
+注：在传输期间 BSY 标志始终为低。
+
+
+V1.7                            401
+CH32H417 系列应用手册                                      https://wch.cn
+
+
+23.3.5 I2S 从模式
+    在从模式下，I2S 可以设置成发送和接收模式。从模式的配置方式基本遵循和配置主模式一样
+的流程。在从模式下，不需要 I2S 接口提供时钟。时钟信号和 WS 信号都由外部主 I2S 设备提供，连
+接到相应的引脚上。因此用户无需配置时钟。
+    配置步骤如下：
+     设置寄存器 I2SCFGR 的 I2SMOD 位激活 I2S 功能；
+                                       设置 I2SSTD[1:0]来选择所用的 I2S 标准；
+设置 DATLEN[1:0]选择数据的比特数；设置 CHLEN 选择每个声道的数据位数。设置寄存器 I2SCFGR 的
+I2SCFG[1:0]选择 I2S 从模式的数据方向（发送端还是接收端）。
+     根据需要，设置寄存器 CR2 打开所需的中断功能和 DMA 功能。
+     必须设置寄存器 I2SCFGR 的 I2SE 位为 1。
+
+23.3.5.1 发送流程
+    当外部主设备发送时钟信号，并且当 NSS_WS 信号请求传输数据时，发送流程开始。必须先使能
+从设备，并且写入 I2S 数据寄存器之后，外部主设备才能开始通信。对于 I2S 的 MSB 对齐和 LSB 对齐
+模式，第一个写入数据寄存器的数据项对应左声道的数据。当开始通信时，数据从发送缓冲器传送到
+移位寄存器，然后标志位 TXE 置为 1；这时，要把对应右声道的数据项写入 I2S 数据寄存器。标志位
+CHSIDE 提示了目前待传输的数据对应哪个声道。与主模式的发送流程相比，在从模式中，CHSIDE 取
+决于来自外部主 I2S 的 WS 信号。这意味着从 I2S 在接收到主机生成的时钟信号之前，就要准备好第
+一个要发送的数据。WS 信号为 1 表示先发送左声道。
+
+23.3.5.2 接收流程
+    配置步骤除了第 1 点外，与发送流程一致。需要通过配置 I2SCFG[1:0]来选择主接收模式。无论
+何种数据和声道长度，音频数据总是以 16 位包的形式接收，即每次填满接收缓存，标志位 RXNE 置 1，
+如果寄存器 I2S_CTLR2 的 RXNEIE 位为 1，则产生中断。按照不同的数据和声道长度设置，收到左声道
+或右声道数据会需要 1 次或 2 次传输数据至接收缓冲器的过程。每次接收到数据（将要从 DATAR 读
+出）以后即更新 CHSIDE，它对应 I2S 单元产生的 WS 信号。读取 SPI_DATAR 寄存器，将清除 RXNE 位。
+在还没有读出前一个接收到的数据，又接收到新数据时，即产生上溢，并设置标志位 OVR 为 1；如果
+寄存器 I2S_CTLR2 的 ERRIE 位为 1，则产生中断，指示发生了错误。要关闭 I2S 功能时，需要在接收
+到最后一次 RXNE=1 时将 I2SE 位清 0。
+
+23.3.6 状态标志位
+       有 3 个状态标志位供用户监控 I2S 总线的状态。
+
+23.3.6.1 状态标志位（BSY）
+    BSY 标志由硬件设置与清除（写入此位无效果），该标志位指示 I2S 通信层的状态。该位为 1 时
+表明 I2S 通讯正在进行中，但有一个例外：主接收模式（I2SCFG=11）下，在接收期间 BSY 标志始终
+为低。在软件要关闭 SPI 模块之前，可以使用 BSY 标志检测传输是否结束，这样可以避免破坏最后一
+次传输，因此需要严格按照下述过程执行。当传输开始时， BSY 标志被置为 1，除非 I2S 模块处于主
+接收模式。当传输结束时或者当关闭 I2S 模块时，该标志位被清除。当通信是连续的时候在主发送模
+式时，整个传输期间，BSY 标志始终为高；在从模式时，每个数据项传输之间，BSY 标志在 1 个 I2S 时
+钟周期内变低。
+
+23.3.6.2 发送缓冲标志位（TXE）
+    该标志位为 1 表示发送缓冲器为空，可以对发送缓冲器写入新的待发送数据。在发送缓冲器中已
+有数据时，标志位清 0。在 I2S 被关闭时（I2SE 位为 0），该标志位也为 0。
+
+
+V1.7                           402
+CH32H417 系列应用手册                                   https://wch.cn
+
+
+23.3.6.3 接收缓存非空标志位（RXNE）
+    该标志位置 1 表示在接收缓存里有接收到的有效数据。在读取寄存器 DATAR 时，该位清 0。
+
+23.3.6.4 声道标志位（CHSIDE）
+    在发送模式下，该标志位在 TXE 为高时刷新，指示从 SD 引脚上发送的数据所在的声道。如果在
+从发送模式下发生了下溢错误，该标志位的值无效，在重新开始通讯前需要把 I2S 关闭再打开。在接
+收模式下，该标志位在寄存器 DATAR 接收到数据时刷新，指示接收到的数据所在的声道。注意，如果
+发生错误，该标志位无意义，需要将 I2S 关闭再打开。在 PCM 标准下，无论短帧格式还是长帧格式，
+这个标志位都没有意义。如果寄存器 STATR 的标志位 OVR 或 UDR 为 1，且寄存器 CR2 的 ERRIE 位为 1，
+则会产生中断。（中断源已经被清除后）可以通过读寄存器 STATR 来清除中断标志。
+
+23.3.7 错误标志位
+23.3.7.1 下溢标志位（UDR）
+    在从发送模式下，如果数据传输的第一个时钟边沿到达时，新的数据仍然没有写入 DATAR 寄存器，
+该标志位会被置 1。在寄存器 I2SCFGR 的 I2SMOD 位置 1 后，该标志位才有效。如果寄存器 CR2 的 ERRIE
+位为 1，就会产生中断。通过对寄存器 STATR 进行读操作来清除该标志位。
+
+23.3.7.2 上溢标志位（OVR）
+    如果还没有读出前一个接收到的数据时，又接收到新的数据，即产生上溢，该标志位置 1，如果
+寄存器 CTLR2 的 ERRIE 位为 1，则产生中断指示发生了错误。这时，接收缓存的内容，不会刷新为从
+发送设备送来的新数据。对寄存器 DATAR 的读操作返回最后一个正确接收到的数据。其他所有在上溢
+发生后由发送设备发出的 16 位数据都会丢失。通过先读寄存器 DATAR 再读寄存器 STATR，来清除该
+标志位。
+
+23.3.8 I2S 中断
+  I2S 有 4 个中断源，其中发送缓冲区空，接收缓冲区非空这两个事件分别会置位 TXE 和 RXNE，在
+分别置位了 TXEIE 和 RXNEIE 位的情况下会产生中断。如果还没有读出前一个接收到的数据时，又接
+收到新的数据，即产生上溢，如果置位了 ERRIE 会产生上溢中断；在从发送模式下，如果数据传输的
+第一个时钟边沿到达时，新的数据仍然没有写入 DATAR 寄存器如果置位了 ERRIE 会产生下溢中断。
+
+23.3.9 DMA 功能
+  DMA 的工作方式在 I2S 模式除了 CRC 功能不可用以外，与在 SPI 模式完全相同。因为在 I2S 模式
+下没有数据传输保护系统。
+
+
+23.4 寄存器描述
+                      表 23-1 SPI1 相关寄存器列表
+         名称        访问地址                  描述              复位值
+ R16_SPI1_CTLR1   0x40013000   SPI1 控制寄存器 1              0x0000
+ R16_SPI1_CTLR2   0x40013004   SPI1 控制寄存器 2              0x0000
+ R16_SPI1_STATR   0x40013008   SPI1 状态寄存器                0x0002
+ R16_SPI1_DATAR   0x4001300C   SPI1 数据寄存器                0x0000
+ R16_SPI1_CRCR    0x40013010   SPI1 多项式寄存器               0x0007
+ R16_SPI1_RCRCR   0x40013014   SPI1 接收 CRC 寄存器           0x0000
+ R16_SPI1_TCRCR   0x40013018   SPI1 发送 CRC 寄存器           0x0000
+ R16_SPI1_HSCR    0x40013024   SPI1 高速控制寄存器              0x0000
+V1.7                           403
+CH32H417 系列应用手册                                       https://wch.cn
+
+
+
+
+                           表 23-2 SPI2 相关寄存器列表
+            名称          访问地址                  描述             复位值
+ R16_SPI2_CTLR1        0x40003800   SPI2 控制寄存器 1             0x0000
+ R16_SPI2_CTLR2        0x40003804   SPI2 控制寄存器 2             0x0000
+ R16_SPI2_STATR        0x40003808   SPI2 状态寄存器               0x0002
+ R16_SPI2_DATAR        0x4000380C   SPI2 数据寄存器               0x0000
+ R16_SPI2_CRCR         0x40003810   SPI2 多项式寄存器              0x0007
+ R16_SPI2_RCRCR        0x40003814   SPI2 接收 CRC 寄存器          0x0000
+ R16_SPI2_TCRCR        0x40003818   SPI2 发送 CRC 寄存器          0x0000
+ R16_SPI2_I2S_CFGR     0x4000381C   SPI2_I2S 配置寄存器           0x0000
+ R16_SPI2_I2SPR        0x40003820   SPI2_I2S 预分频寄存器          0x0000
+ R16_SPI2_HSCR         0x40003824   SPI2 高速控制寄存器             0x0000
+
+
+                           表 23-3 SPI3 相关寄存器列表
+            名称          访问地址                  描述             复位值
+ R16_SPI3_CTLR1        0x40003C00   SPI3 控制寄存器 1             0x0000
+ R16_SPI3_CTLR2        0x40003C04   SPI3 控制寄存器 2             0x0000
+ R16_SPI3_STATR        0x40003C08   SPI3 状态寄存器               0x0002
+ R16_SPI3_DATAR        0x40003C0C   SPI3 数据寄存器               0x0000
+ R16_SPI3_CRCR         0x40003C10   SPI3 多项式寄存器              0x0007
+ R16_SPI3_RCRCR        0x40003C14   SPI3 接收 CRC 寄存器          0x0000
+ R16_SPI3_TCRCR        0x40003C18   SPI3 发送 CRC 寄存器          0x0000
+ R16_SPI3_I2S_CFGR     0x40003C1C   SPI3_I2S 配置寄存器           0x0000
+ R16_SPI3_I2SPR        0x40003C20   SPI3_I2S 预分频寄存器          0x0000
+ R16_SPI3_HSCR         0x40003C24   SPI3 高速控制寄存器             0x0000
+
+
+                           表 23-4 SPI4 相关寄存器列表
+            名称          访问地址                  描述             复位值
+ R16_SPI4_CTLR1        0x40004000   SPI4 控制寄存器 1             0x0000
+ R16_SPI4_CTLR2        0x40004004   SPI4 控制寄存器 2             0x0000
+ R16_SPI4_STATR        0x40004008   SPI4 状态寄存器               0x0002
+ R16_SPI4_DATAR        0x4000400C   SPI4 数据寄存器               0x0000
+ R16_SPI4_CRCR         0x40004010   SPI4 多项式寄存器              0x0007
+ R16_SPI4_RCRCR        0x40004014   SPI4 接收 CRC 寄存器          0x0000
+ R16_SPI4_TCRCR        0x40004018   SPI4 发送 CRC 寄存器          0x0000
+ R16_SPI4_HSCR         0x40004024   SPI4 高速控制寄存器             0x0000
+
+
+23.4.1 SPI 控制寄存器 1（SPIx_CTLR1）（x=1/2/3/4）
+       偏移地址：0x00
+       位          名称      访问                  描述               复位值
+                                单向数据模式使能位：
+       15   BIDIMODE       RW   1：选择单线双向模式；                       0
+                                0：选择双线双向模式。
+
+V1.7                                404
+CH32H417 系列应用手册                                           https://wch.cn
+
+
+                               单线输出使能位，和 BIDIMODE 配合使用。
+        14     BIDIOE     RW   1：使能输出，仅发送；                            0
+                               0：禁止输出，仅接收。
+                               硬件 CRC 校验使能位，该位只能在 SPE 为 0 时
+                               写入，该位只能在全双工模式下使用。
+        13     CRCEN      RW                                          0
+                               1：启动 CRC 计算；
+                               0：禁止 CRC 计算。
+                               在接下来的一次数据传输后，发送 CRC 寄存器
+                               的值。这位应该在向数据寄存器写入最后一个
+        12     CRCNEXT    RW   数据后立刻置位。                               0
+                               1：发送 CRC 校验结果；
+                               0：继续发送数据寄存器的数据。
+                               数据帧长度位，此位只能在 SPE 为 0 时写入。
+        11     DFF        RW   1：使用 16 位数据长度进行收发；                     0
+                               0：使用 8 位数据长度进行收发。
+                               双线模式下只接收位，该位和 BIDIMODE 配合
+                               使用。置此位可以让设备只接收不发送。
+        10     RXONLY     RW                                          0
+                               1：只接收，单工模式；
+                               0：全双工模式。
+                               片选引脚管理位，此位决定 NSS 引脚的电平由
+                               硬件还是软件控制。
+        9      SSM        RW                                          0
+                               1：软件控制 NSS 引脚；
+                               0：硬件控制 NSS 引脚。
+                               片选引脚控制位，在 SSM 置位的情况下，此位
+                               决定 NSS 引脚的电平。
+        8      SSI        RW                                          0
+                               1：NSS 为高电平；
+                               0：NSS 为低电平。
+                               帧格式控制位。不可以在通讯时修改此位。
+        7      LSBFIRST   RW   1：先发送 LSB；                             0
+                               0：先发送 MSB。
+                               SPI 使能位。
+        6      SPE        RW   1：启用 SPI；                              0
+                               0：禁用 SPI。
+                               波特率设置域，在通讯时不可以修改此域。
+                               当 HSRXEN 位为 0 时，SCK 频率为：
+                               000：FHCLK/2；    001：FHCLK/4；
+                               010：FHCLK/8；    011：FHCLK/16；
+                               100：FHCLK/32；   101：FHCLK/64；
+       [5:3]   BR[2:0]    RW   110：FHCLK/128；  111：FHCLK/256。       000b
+                               当 HSRXEN 位为 1 时，SCK 频率为：
+                               000：FHCLK/2；    001：FHCLK/3；
+                               010：FHCLK/4；    011：FHCLK/5；
+                               100：FHCLK/6；    101：FHCLK/7；
+                               110：FHCLK/8；    111：FHCLK/9。
+                               主从设置位，在通讯时不可以修改此位。
+        2      MSTR       RW                                          0
+                               1：配置为主设备；
+V1.7                               405
+CH32H417 系列应用手册                                          https://wch.cn
+
+
+                                  0：配置为从设备。
+                                  时钟极性选择位，在通讯时不可以修改此位。
+        1      CPOL          RW   1：空闲状态时，SCK 保持高电平；                 0
+                                  0：空闲状态时，SCK 保持低电平。
+                                  时钟相位设置位，在通讯时不可以修改此位。
+        0      CPHA          RW   1：数据采样从第二个时钟沿开始；                   0
+                                  0：数据采样从第一个时钟沿开始。
+
+
+23.4.2 SPI 控制寄存器 2（SPIx_CTLR2）（x=1/2/3/4）
+       偏移地址：0x04
+        位               名称   访问               描述                  复位值
+   [15:8]      Reserved      RO   保留。                                0
+                                  发送缓冲区空中断使能位：
+        7      TXEIE         RW   1：允许 TXE 被置位时产生中断；                 0
+                                  0：禁止 TXE 被置位时产生中断。
+                                  接收缓冲区非空中断使能位：
+        6      RXNEIE        RW   1：允许 RXNE 被置位时产生中断；                0
+                                  0：禁止 RXNE 被置位时产生中断。
+                                  错误中断使能位：
+                                  1：允许在产生错误（CRCERR，OVR，MODF）时
+        5      ERRIE         RW   产生中断；                              0
+                                  0：禁止在产生错误（CRCERR，OVR，MODF）时
+                                  产生中断。
+       [4:3]   Reserved      RO   保留。                                0
+                                  SS 输出使能。禁止 SS 输出可以工作在多主模
+                                  式下。
+        2      SSOE          RW                                      0
+                                  1：使能 SS 输出；
+                                  0：禁止主模式下的 SS 输出。
+                                  发送缓冲区 DMA 使能位：
+        1      TXDMAEN       RW   1：启用发送缓冲区 DMA；                     0
+                                  0：禁用发送缓冲区 DMA。
+                                  接收缓冲区 DMA 使能位：
+        0      RXDMAEN       RW   1：启用接收缓冲区 DMA；                     0
+                                  0：禁用接收缓冲区 DMA。
+
+
+23.4.3 SPI 状态寄存器（SPIx_STATR）（x=1/2/3/4）
+       偏移地址：0x08
+        位               名称   访问               描述                  复位值
+   [15:8]      Reserved      RO   保留。                                0
+                                  忙标志位，该位由硬件置位或复位。
+        7      BSY           RO   1：SPI 正在通讯，或发送缓冲区非空；               0
+                                  0：SPI 不在通讯。
+                                  溢出标志位，该位由硬件置位，软件复位。
+        6      OVR           RO   1：出现溢出错误；                          0
+                                  0：没有出现溢出错误。
+
+V1.7                                 406
+CH32H417 系列应用手册                                          https://wch.cn
+
+
+                                  模式错误标志位，该位由硬件置位，软件复位。
+       5    MODF            RO    1：出现了模式错误；                         0
+                                  0：没有出现模式错误。
+                                  CRC 错误标志位，该位由硬件置位，软件复位。
+       4    CRCERR          RW0   1：收到的 CRC 值与 RCRCR 的值不一致；          0
+                                  0：收到的 CRC 值与 RCRCR 的值一致。
+                                  下溢标志位，该位由硬件置位，软件复位。
+       3    UDR             RO    1：发生下溢；                            0
+                                  0：未发生下溢。
+                                  声道，该位由硬件置位，软件复位。
+       2    CHSIDE          RO    1：需要传输或接收右声道；                      0
+                                  0：需要传输或接收左声道。
+                                  发送缓冲区为空标志位：
+       1    TXE             RO    1：发送缓冲区为空；                         1
+                                  0：发送缓冲区非空。
+                                  接收缓冲区非空标志位：
+                                  1：接收缓冲区非空；
+       0    RXNE            RO                                       0
+                                  0：接收缓冲区为空。
+                                  注：读 DATAR，自动清零。
+
+
+23.4.4 SPI 数据寄存器（SPIx_DATAR）（x=1/2/3/4）
+       偏移地址：0x0C
+       位             名称     访问                描述                  复位值
+                                  数据寄存器。数据寄存器用于存放接收到的数
+                                  据或预存将要发送出去的数据，因此数据寄存
+                                  器的读写实际上是对应操作不同的区域，其中
+                                  读对应接收缓冲区，写对应发送缓冲区。数据
+   [15:0]   DR[15:0]        RW    的接收和发送可以是 8 位或者 16 位的，需要           0
+                                  在传输之前就确定使用多少位的数据。使用 8
+                                  位进行数据传输时，只有数据寄存器的低 8 位
+                                  被使用，接收时高 8 位强制为 0。使用 16 位数
+                                  据结构则会使全部 16 位数据寄存器被使用。
+
+
+23.4.5 SPI 多项式寄存器（SPIx_CRCR）（x=1/2/3/4）
+       偏移地址：0x10
+       位             名称     访问                描述                  复位值
+   [15:0]   CRCPOLY[15:0]   RW    CRC 多项式。此域定义 CRC 计算用到的多项式。 0x0007
+
+
+23.4.6 SPI 接收 CRC 寄存器（SPIx_RCRCR）（x=1/2/3/4）
+       偏移地址：0x14
+       位             名称     访问                描述                  复位值
+                                  接收 CRC 值。存储着计算出来的接收到的字节
+   [15:0]   RXCRC[15:0]     RO    的 CRC 校验的结果。对 CRCEN 置位会复位该寄        0
+                                  存器。计算方法使用 CRCPOLY 用到的多项式。
+
+
+V1.7                                 407
+CH32H417 系列应用手册                                             https://wch.cn
+
+
+                                  8 位模式下只有低 8 位参与计算，16 位模式下
+                                  全部 16 位都会参与计算。需要在 BSY 为 0 时
+                                  去读取这个寄存器。
+
+
+23.4.7 发送 CRC 寄存器（SPIx_TCRCR）（x=1/2/3/4）
+       偏移地址：0x18
+        位               名称   访问                描述                    复位值
+                                  发送 CRC 值。存储着计算出来的已经发送出去
+                                  的字节的 CRC 校验的结果。对 CRCEN 置位会复
+                                  位该寄存器。计算方法使用 CRCPOLY 用到的多
+   [15:0]      TXCRC[15:0]   RO                                         0
+                                  项式。8 位模式下只有低 8 位参与计算，16 位
+                                  模式下全部 16 位都会参与计算。 需要在 BSY 为
+                                  0 时去读取这个寄存器。
+
+
+23.4.8 SPI_I2S 配置寄存器（SPIx_I2S_CFGR）（x=2/3）
+       偏移地址：0x1C
+        位               名称   访问                描述                    复位值
+  [15:12] Reserved           RO   保留。                                   0
+                                  I2S 模式选择， 该位只有在关闭了 SPI 或者 I2S
+                                  时才能设置。
+        11     I2SMOD        RW                                         0
+                                  1：选择 I2S 模式；
+                                  0：选择 SPI 模式。
+                                  I2S 使能，在 SPI 模式下不使用。
+        10     I2SE          RW   1：I2S 使能；                             0
+                                  0：关闭 I2S。
+                                  I2S 模式选择，此该位只有在关闭了 I2S 时才
+                                  能设置：
+                                  00：从设备发送；
+       [9:8]   I2SCFG[1:0]   RW                                         0
+                                  01：从设备接收；
+                                  10：主设备发送；
+                                  11：主设备接受。
+                                  PCM 帧同步。该位只在 I2SSTD = 11（使用 PCM
+                                  标准）时有意义。
+        7      PCMSYNC       RW                                         0
+                                  1：长帧同步；
+                                  0：短帧同步。
+        6      Reserved      RO   保留。                                   0
+                                  I2S 标准选择，只有在关闭了 I2S 时才能设置
+                                  该位。
+                                  00：I2S 飞利浦标准；
+       [5:4]   I2SSTD[1:0]   RW                                         0
+                                  01：高字节对齐标准（左对齐）；
+                                  10：低字节对齐标准（右对齐）；
+                                  11：PCM 标准。
+                                  静止态时钟极性，为了正确操作，该位只有在
+        3      CKPOL         RW   关闭了 I2S 时才能设置。                        0
+                                  1：I2S 时钟静止态为高电平；
+
+V1.7                                  408
+CH32H417 系列应用手册                                            https://wch.cn
+
+
+                                  0：I2S 时钟静止态为低电平。
+                                  待传输数据长度，为了正确操作，该位只有在
+                                  关闭了 I2S 时才能设置。
+                                  00：16 位数据长度；
+       [2:1]   DATLEN[1:0]   RW                                        0
+                                  01：24 位数据长度；
+                                  10：32 位数据长度；
+                                  11：不允许。
+                                  声道长度，只有在 DATLEN = 00 时该位的写操
+                                  作才有意义，否则声道长度都由硬件固定为 32
+        0      CHLEN         RW   位。                                   0
+                                  1：32 位宽；
+                                  0：16 位宽。
+
+
+23.4.9 SPI_I2S 预分频寄存器（SPIx_I2SPR）（x=2/3）
+       偏移地址：0x20
+        位               名称   访问                描述                   复位值
+  [15:10] Reserved           RO   保留。                                  0
+                                  主设备时钟输出使能，为了正确操作，该位只
+                                  有在关闭了 I2S 时才能设置。仅在 I2S 主设备
+        9      MCKOE         RW   模式下使用该位。                             0
+                                  1：主设备时钟输出使能；
+                                  0：关闭主设备时钟输出。
+                                  奇系数预分频，为了正确操作，该位只有在关
+                                  闭了 I2S 时才能设置。仅在 I2S 主设备模式下
+        8      ODD           RW   使用该位。                                0
+                                  1：实际分频系数 = （I2SDIV * 2）+1；
+                                  0：实际分频系数 = I2SDIV * 2。
+                                  I2S 线性预分频。为了正确操作，该位只有在
+                                  关闭了 I2S 时才能设置。仅在 I2S 主设备模式
+       [7:0]   I2SDIV[7:0]   RW                                        0
+                                  下使用该位。禁止设置 I2SDIV[7:0] = 0 或者
+                                  I2SDIV[7:0] = 1。
+
+
+23.4.10 SPI 高速控制寄存器（SPIx_HSCR）（x=1/2/3/4）
+       偏移地址：0x24
+        位               名称   访问                描述                   复位值
+   [15:3]      Reserved      RO   保留。                                  0
+                                  SPI 高速读模式 2：
+                                  该模式仅在开启 HSRXEN 且 SPI HCLK 大于等于
+                                  120M 时使用，小于 120M 不建议使用此位。可
+        2      HSRXEN2       RW                                        0
+                                  以获得比仅开启 HSRXEN 更高的主机读速度。
+                                  1：使能高速读模式 2；
+                                  0：关闭高速读模式 2。
+        1      Reserved      RO   保留。                                  0
+                                  高速读模式使能位：
+        0      HSRXEN        WO                                        0
+                                  1：使能高速读模式；
+
+V1.7                                  409
+CH32H417 系列应用手册                https://wch.cn
+
+
+                  0：关闭高速读模式。
+
+
+
+
+V1.7                 410
+CH32H417 系列应用手册                                                 https://wch.cn
+
+
+

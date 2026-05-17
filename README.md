@@ -2,6 +2,15 @@ nanoCH32H417
 -----------
 [中文](./README_cn.md)
 
+> **Vibecoding fork** — adds CLI workflow + structured docs for use with [Claude Code](https://claude.com/claude-code).
+> Upstream: [wuxx/nanoCH32H417](https://github.com/wuxx/nanoCH32H417). Sync via `git fetch upstream`.
+>
+> New in this fork:
+> - [CLAUDE.md](CLAUDE.md) — project context for the LLM
+> - [PINOUT.md](PINOUT.md) — silkscreen → MCU pin mapping (verified)
+> - [EXAMPLES.md](EXAMPLES.md) — index of all 47 peripherals in `doc/EVT/EXAM/`
+> - [BUILD.md](BUILD.md) — headless CLI build/flash (no MounRiver Studio)
+
 * [Introduce](#Introduce)
 * [Feature](#feature)
 * [Chip Resources](#chip-resources)
